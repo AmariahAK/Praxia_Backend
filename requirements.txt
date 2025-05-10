@@ -40,3 +40,4 @@ django-prometheus
 psutil
 pybreaker 
 requests-futures
+locust
