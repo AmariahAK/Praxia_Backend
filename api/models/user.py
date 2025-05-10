@@ -5,9 +5,18 @@ from django.dispatch import receiver
 
 class UserProfile(models.Model):
     """Extended user profile with health information"""
+    GENDER_CHOICES = (
+        ('male', 'Male'),
+        ('female', 'Female'),
+        ('other', 'Other'),
+        ('prefer_not_to_say', 'Prefer not to say'),
+    )
+    
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='profile')
     profile_picture = models.ImageField(upload_to='profile_pics/', null=True, blank=True)
     age = models.PositiveIntegerField(null=True, blank=True)
+    gender = models.CharField(max_length=20, choices=GENDER_CHOICES, null=True, blank=True)
+    gender_locked = models.BooleanField(default=False, help_text="Once set, gender cannot be changed")
     weight = models.FloatField(null=True, blank=True, help_text="Weight in kilograms")
     height = models.FloatField(null=True, blank=True, help_text="Height in centimeters")
     country = models.CharField(max_length=100, blank=True)

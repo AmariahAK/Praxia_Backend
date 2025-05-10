@@ -5,6 +5,7 @@ from ..views import (
     LoginView, 
     LogoutView,
     UserProfileView,
+    ConfirmGenderView,
     ChatSessionViewSet,
     ChatMessageView,
     MedicalConsultationView,
@@ -31,6 +32,7 @@ urlpatterns = [
     
     # User profile URLs
     path('profile/', UserProfileView.as_view(), name='user-profile'),
+    path('profile/confirm-gender/', ConfirmGenderView.as_view(), name='confirm-gender'),
     
     # Chat URLs
     path('', include(router.urls)),

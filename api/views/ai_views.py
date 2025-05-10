@@ -74,6 +74,7 @@ class ChatMessageView(APIView):
         user_message = user_message_serializer.save(session=session)
         
         user_profile = {
+            'gender': request.user.profile.gender,
             'age': request.user.profile.age,
             'weight': request.user.profile.weight,
             'height': request.user.profile.height,
@@ -116,6 +117,7 @@ class MedicalConsultationView(APIView):
         serializer = MedicalConsultationSerializer(data=request.data)
         if serializer.is_valid():
             user_profile = {
+                'gender': request.user.profile.gender,
                 'age': request.user.profile.age,
                 'weight': request.user.profile.weight,
                 'height': request.user.profile.height,

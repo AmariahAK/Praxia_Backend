@@ -4,27 +4,34 @@ from ..models import UserProfile
 
 class UserProfileSerializer(serializers.ModelSerializer):
     """Serializer for user profile"""
-    full_name = serializers.SerializerMethodField()
-    email = serializers.SerializerMethodField()
-    profile_picture_url = serializers.SerializerMethodField()
+    username = serializers.CharField(source='user.username', read_only=True)
+    email = serializers.EmailField(source='user.email', read_only=True)
     
     class Meta:
         model = UserProfile
-        fields = ('id', 'full_name', 'email', 'profile_picture_url', 'age', 'weight', 'height', 'country', 'allergies')
-    
-    def get_full_name(self, obj):
-        return f"{obj.user.first_name} {obj.user.last_name}".strip()
-    
-    def get_email(self, obj):
-        return obj.user.email
-    
-    def get_profile_picture_url(self, obj):
-        if obj.profile_picture:
-            return self.context['request'].build_absolute_uri(obj.profile_picture.url)
-        return None
+        fields = ('username', 'email', 'profile_picture', 'age', 'gender', 'gender_locked', 
+                  'weight', 'height', 'country', 'allergies', 'created_at', 'updated_at')
+        read_only_fields = ('created_at', 'updated_at', 'gender_locked')
 
 class UserProfileUpdateSerializer(serializers.ModelSerializer):
     """Serializer for updating user profile"""
+    
     class Meta:
         model = UserProfile
-        fields = ('profile_picture', 'age', 'weight', 'height', 'country', 'allergies')
+        fields = ('profile_picture', 'age', 'gender', 'weight', 'height', 'country', 'allergies')
+    
+    def validate_gender(self, value):
+        """Validate that gender cannot be changed once set and locked"""
+        instance = getattr(self, 'instance', None)
+        if instance and instance.gender and instance.gender_locked and instance.gender != value:
+            raise serializers.ValidationError("Gender cannot be changed once it has been set and confirmed.")
+        return value
+    
+    def update(self, instance, validated_data):
+        """Custom update to handle gender locking"""
+        # If gender is being set for the first time, don't lock it yet
+        if 'gender' in validated_data and instance.gender != validated_data['gender'] and not instance.gender_locked:
+            # Gender will be updated but not locked until confirmation
+            pass
+        
+        return super().update(instance, validated_data)

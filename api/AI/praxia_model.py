@@ -84,18 +84,23 @@ class PraxiaAI:
         """Build context string from user profile data"""
         if not user_profile:
             return ""
-            
-        context = f"Patient information: Age {user_profile.get('age', 'unknown')}, "
+        
+        context = f"Patient information: "
+        
+        if user_profile.get('gender'):
+            context += f"Gender: {user_profile.get('gender')}, "
+        
+        context += f"Age {user_profile.get('age', 'unknown')}, "
         context += f"Weight {user_profile.get('weight', 'unknown')}kg, "
         context += f"Height {user_profile.get('height', 'unknown')}cm, "
         context += f"Country: {user_profile.get('country', 'unknown')}. "
         
         if user_profile.get('allergies'):
             context += f"Allergies: {user_profile.get('allergies')}. "
-            
+        
         if user_profile.get('medical_history'):
             context += f"Medical history: {user_profile.get('medical_history')}. "
-            
+        
         return context
     
     def _preprocess_symptoms(self, symptoms):
@@ -173,8 +178,8 @@ Your response must be valid JSON that can be parsed programmatically.
             # Extract JSON from response
             try:
                 # Find JSON content between triple backticks if present
-                if "```json" in response_text and "```" in response_text.split("```json", 1)[1]:
-                    json_str = response_text.split("```json", 1)[1].split("```", 1)[0].strip()
+                if "" in response_text and "" in response_text.split("", 1)[1]:
+                    json_str = response_text.split("json", 1)[1].split("", 1)[0].strip()
                     diagnosis_data = json.loads(json_str)
                 else:
                     # Try to parse the entire response as JSON
@@ -294,8 +299,8 @@ Your response must be valid JSON that can be parsed programmatically.
             # Extract JSON from response
             try:
                 # Find JSON content between triple backticks if present
-                if "```json" in detailed_analysis_text and "```" in detailed_analysis_text.split("```json", 1)[1]:
-                    json_str = detailed_analysis_text.split("```json", 1)[1].split("```", 1)[0].strip()
+                if "json" in detailed_analysis_text and "" in detailed_analysis_text.split("json", 1)[1]:
+                    json_str = detailed_analysis_text.split("", 1)[1].split("", 1)[0].strip()
                     detailed_analysis = json.loads(json_str)
                 else:
                     # Try to parse the entire response as JSON
@@ -440,8 +445,8 @@ Your response must be valid JSON that can be parsed programmatically.
             # Extract JSON from response
             try:
                 # Find JSON content between triple backticks if present
-                if "```json" in response_text and "```" in response_text.split("```json", 1)[1]:
-                    json_str = response_text.split("```json", 1)[1].split("```", 1)[0].strip()
+                if "" in response_text and "" in response_text.split("", 1)[1]:
+                    json_str = response_text.split("json", 1)[1].split("", 1)[0].strip()
                     diet_data = json.loads(json_str)
                 else:
                     # Try to parse the entire response as JSON
@@ -542,8 +547,8 @@ Your response must be valid JSON that can be parsed programmatically.
             # Extract JSON from response
             try:
                 # Find JSON content between triple backticks if present
-                if "```json" in response_text and "```" in response_text.split("```json", 1)[1]:
-                    json_str = response_text.split("```json", 1)[1].split("```", 1)[0].strip()
+                if "json" in response_text and "" in response_text.split("json", 1)[1]:
+                    json_str = response_text.split("", 1)[1].split("", 1)[0].strip()
                     medication_data = json.loads(json_str)
                 else:
                     # Try to parse the entire response as JSON
