@@ -4,6 +4,7 @@ import json
 import pymed
 import numpy as np
 import torch
+import structlog
 from PIL import Image
 from io import BytesIO
 from django.conf import settings
@@ -17,6 +18,9 @@ from monai.transforms import (
     Resize,
 )
 from celery import shared_task
+
+# Configure structured logging
+logger = structlog.get_logger()
 
 class PraxiaAI:
     """
@@ -69,9 +73,39 @@ class PraxiaAI:
             if os.path.exists(model_path):
                 self.xray_model.load_state_dict(torch.load(model_path, map_location=self.device))
                 self.xray_model.eval()
+                logger.info("X-ray model loaded successfully")
+            else:
+                logger.warning("X-ray model weights not found")
         except Exception as e:
-            print(f"Error initializing X-ray model: {e}")
+            logger.error("Error initializing X-ray model", error=str(e))
             self.xray_model = None
+    
+    def _build_user_context(self, user_profile):
+        """Build context string from user profile data"""
+        if not user_profile:
+            return ""
+            
+        context = f"Patient information: Age {user_profile.get('age', 'unknown')}, "
+        context += f"Weight {user_profile.get('weight', 'unknown')}kg, "
+        context += f"Height {user_profile.get('height', 'unknown')}cm, "
+        context += f"Country: {user_profile.get('country', 'unknown')}. "
+        
+        if user_profile.get('allergies'):
+            context += f"Allergies: {user_profile.get('allergies')}. "
+            
+        if user_profile.get('medical_history'):
+            context += f"Medical history: {user_profile.get('medical_history')}. "
+            
+        return context
+    
+    def _preprocess_symptoms(self, symptoms):
+        """Preprocess and validate symptom input"""
+        if not symptoms or len(symptoms.strip()) < 3:
+            return "unspecified symptoms"
+            
+        # Remove any potentially harmful characters
+        cleaned = symptoms.replace('<', '').replace('>', '')
+        return cleaned
     
     @shared_task
     def diagnose_symptoms(self, symptoms, user_profile=None):
@@ -85,56 +119,96 @@ class PraxiaAI:
         Returns:
             dict: Diagnosis results with potential conditions and recommendations
         """
-        cache_key = f"diagnosis_{hash(symptoms)}_{hash(str(user_profile))}"
+        # Preprocess symptoms
+        processed_symptoms = self._preprocess_symptoms(symptoms)
+        
+        # Generate cache key
+        cache_key = f"diagnosis_{hash(processed_symptoms)}_{hash(str(user_profile))}"
         cached_result = cache.get(cache_key)
         
         if cached_result:
+            logger.info("Returning cached diagnosis", symptoms=processed_symptoms[:30])
             return cached_result
         
-        # Prepare context with user profile if available
-        context = ""
-        if user_profile:
-            context = f"Patient information: Age {user_profile.get('age')}, Weight {user_profile.get('weight')}kg, "
-            context += f"Height {user_profile.get('height')}cm, Country: {user_profile.get('country')}. "
-            if user_profile.get('allergies'):
-                context += f"Allergies: {user_profile.get('allergies')}. "
+        # Build context with user profile
+        context = self._build_user_context(user_profile)
         
-        # Prepare prompt for the LLM
+        # Get relevant medical research first to incorporate into prompt
+        research_results = self.get_medical_research(processed_symptoms, limit=2)
+        research_context = ""
+        if research_results:
+            research_context = "Relevant medical research:\n"
+            for i, article in enumerate(research_results):
+                research_context += f"{i+1}. {article.get('title')} ({article.get('journal')}): "
+                research_context += f"{article.get('abstract')[:200]}...\n"
+        
+        # Prepare prompt for the LLM with improved structure
         prompt = f"""You are Praxia, a medical AI assistant. {self.identity}
-        
-        {context}
-        
-        Based on these symptoms: {symptoms}
-        
-        Provide a detailed analysis including:
-        1. Potential conditions that match these symptoms
-        2. Recommended next steps
-        3. When the patient should seek immediate medical attention
-        4. General advice for managing these symptoms
-        
-        Format your response in a structured way with clear sections.
-        """
+
+{context}
+
+Based on these symptoms: {processed_symptoms}
+
+{research_context}
+
+WHO guidelines recommend careful assessment of symptoms and considering local disease prevalence.
+Mayo Clinic emphasizes that symptom diagnosis should consider patient history and risk factors.
+
+Analyze these symptoms and provide a response in JSON format with these keys:
+1. "conditions": [List of potential conditions, ordered by likelihood, with confidence scores (0-100)]
+2. "next_steps": [Recommended diagnostic steps or treatments]
+3. "urgent": [Symptoms or conditions requiring immediate medical attention]
+4. "advice": General advice for managing these symptoms
+5. "clarification": Questions to ask if symptoms are ambiguous or incomplete
+
+If symptoms are ambiguous, focus on the "clarification" section to gather more information.
+
+Your response must be valid JSON that can be parsed programmatically.
+"""
         
         try:
             # Call Together AI API
-            response = self._call_together_ai(prompt)
+            response_text = self._call_together_ai(prompt)
             
-            # Enhance the diagnosis with relevant medical research
-            research_results = self.get_medical_research(symptoms, limit=3)
+            # Extract JSON from response
+            try:
+                # Find JSON content between triple backticks if present
+                if "```json" in response_text and "```" in response_text.split("```json", 1)[1]:
+                    json_str = response_text.split("```json", 1)[1].split("```", 1)[0].strip()
+                    diagnosis_data = json.loads(json_str)
+                else:
+                    # Try to parse the entire response as JSON
+                    diagnosis_data = json.loads(response_text)
+            except json.JSONDecodeError:
+                # Fallback: create structured response from unstructured text
+                logger.warning("Failed to parse JSON response", response=response_text[:100])
+                diagnosis_data = {
+                    "conditions": ["Unable to parse conditions from response"],
+                    "next_steps": ["Consult with a healthcare professional"],
+                    "urgent": ["If symptoms are severe, seek immediate medical attention"],
+                    "advice": response_text,
+                    "clarification": ["Please provide more specific symptom details"]
+                }
             
-            # Process and structure the response
+            # Add research results and disclaimer
             result = {
-                "diagnosis": response,
+                "diagnosis": diagnosis_data,
                 "related_research": research_results,
                 "disclaimer": "This information is for educational purposes only and not a substitute for professional medical advice."
             }
             
             # Cache the result
             cache.set(cache_key, result, self.cache_timeout)
+            logger.info("Diagnosis completed successfully", symptoms=processed_symptoms[:30])
             
             return result
         except Exception as e:
-            return {"error": str(e), "message": "Unable to process diagnosis at this time."}
+            logger.error("Error in symptom diagnosis", error=str(e), symptoms=processed_symptoms[:30])
+            return {
+                "error": str(e), 
+                "message": "Unable to process diagnosis at this time.",
+                "disclaimer": "Please consult with a healthcare professional for medical advice."
+            }
     
     @shared_task
     def analyze_xray(self, image_data):
@@ -148,6 +222,7 @@ class PraxiaAI:
             dict: Analysis results
         """
         if not self.xray_model:
+            logger.warning("X-ray model not initialized")
             return {
                 "error": "X-ray model not initialized",
                 "message": "The X-ray analysis model is not available."
@@ -183,26 +258,71 @@ class PraxiaAI:
             
             # Determine findings based on probability
             findings = []
+            confidence_level = ""
             if abnormal_prob > 0.7:
                 findings.append("Potential abnormality detected with high confidence")
+                confidence_level = "high"
             elif abnormal_prob > 0.4:
                 findings.append("Possible abnormality detected with moderate confidence")
+                confidence_level = "moderate"
             else:
                 findings.append("No significant abnormalities detected")
+                confidence_level = "low"
             
             # Get related research for context
             research = self.get_medical_research("X-ray abnormalities diagnosis", limit=2)
+            
+            # Prepare prompt for SAM-Med2D integration
+            prompt = f"""You are Praxia, a medical AI assistant specialized in X-ray analysis. {self.identity}
+
+I have analyzed an X-ray image with the following findings:
+- {findings[0]}
+- Confidence level: {confidence_level} (abnormality probability: {abnormal_prob:.2f})
+
+Based on these findings, provide a detailed analysis in JSON format with these keys:
+1. "interpretation": Detailed interpretation of the X-ray findings
+2. "possible_conditions": List of possible conditions, ordered by likelihood
+3. "recommendations": Recommended next steps for the patient
+4. "limitations": Limitations of this AI analysis
+
+Your response must be valid JSON that can be parsed programmatically.
+"""
+            
+            # Call Together AI API for detailed analysis
+            detailed_analysis_text = self._call_together_ai(prompt)
+            
+            # Extract JSON from response
+            try:
+                # Find JSON content between triple backticks if present
+                if "```json" in detailed_analysis_text and "```" in detailed_analysis_text.split("```json", 1)[1]:
+                    json_str = detailed_analysis_text.split("```json", 1)[1].split("```", 1)[0].strip()
+                    detailed_analysis = json.loads(json_str)
+                else:
+                    # Try to parse the entire response as JSON
+                    detailed_analysis = json.loads(detailed_analysis_text)
+            except json.JSONDecodeError:
+                # Fallback: create structured response
+                logger.warning("Failed to parse JSON response for X-ray analysis")
+                detailed_analysis = {
+                    "interpretation": detailed_analysis_text,
+                    "possible_conditions": ["Unable to parse conditions from response"],
+                    "recommendations": ["Consult with a radiologist for professional interpretation"],
+                    "limitations": ["AI analysis should be confirmed by a healthcare professional"]
+                }
             
             result = {
                 "analysis": "X-ray analysis completed successfully",
                 "findings": findings,
                 "confidence": abnormal_prob,
+                "detailed_analysis": detailed_analysis,
                 "related_research": research,
                 "disclaimer": "This is an AI interpretation and should be confirmed by a radiologist."
             }
             
+            logger.info("X-ray analysis completed successfully", confidence=abnormal_prob)
             return result
         except Exception as e:
+            logger.error("Error in X-ray analysis", error=str(e))
             return {"error": str(e), "message": "Unable to process X-ray at this time."}
     
     @shared_task
@@ -243,9 +363,11 @@ class PraxiaAI:
             
             # Cache the results
             cache.set(cache_key, articles, self.cache_timeout)
+            logger.info("Medical research retrieved successfully", query=query, count=len(articles))
             
             return articles
         except Exception as e:
+            logger.warning("Error retrieving medical research", error=str(e), query=query)
             # If PubMed API fails, return placeholder data
             placeholder_results = [
                                 {"title": "Recent advances in medical diagnosis and treatment", "authors": "Smith J, et al.", "journal": "Medical Journal", "publication_date": "2023"},
@@ -265,52 +387,197 @@ class PraxiaAI:
         Returns:
             dict: Diet analysis results
         """
+        # Preprocess input
+        if not diet_info or len(diet_info.strip()) < 5:
+            return {
+                "error": "Insufficient diet information",
+                "message": "Please provide more details about your diet for analysis."
+            }
+            
+        # Generate cache key
         cache_key = f"diet_{hash(diet_info)}_{hash(str(user_profile))}"
         cached_result = cache.get(cache_key)
         
         if cached_result:
+            logger.info("Returning cached diet analysis")
             return cached_result
         
-        # Prepare context with user profile if available
-        context = ""
-        if user_profile:
-            context = f"Patient information: Age {user_profile.get('age')}, Weight {user_profile.get('weight')}kg, "
-            context += f"Height {user_profile.get('height')}cm, Country: {user_profile.get('country')}. "
-            if user_profile.get('allergies'):
-                context += f"Allergies: {user_profile.get('allergies')}. "
+        # Build context with user profile
+        context = self._build_user_context(user_profile)
+        
+        # Get relevant nutritional research
+        research_results = self.get_medical_research(f"nutrition {diet_info}", limit=2)
+        research_context = ""
+        if research_results:
+            research_context = "Relevant nutritional research:\n"
+            for i, article in enumerate(research_results):
+                research_context += f"{i+1}. {article.get('title')} ({article.get('journal')}): "
+                research_context += f"{article.get('abstract')[:200]}...\n"
         
         # Prepare prompt for the LLM
-        prompt = f"""You are Praxia, a medical AI assistant. {self.identity}
-        
-        {context}
-        
-        Based on this diet information: {diet_info}
-        
-        Provide a detailed nutritional analysis including:
-        1. Assessment of nutritional balance
-        2. Potential nutritional deficiencies
-        3. Recommendations for improvement
-        4. Specific foods to consider adding or removing
-        
-        Format your response in a structured way with clear sections.
-        """
+        prompt = f"""You are Praxia, a medical AI assistant specializing in nutrition. {self.identity}
+
+{context}
+
+Based on this diet information: {diet_info}
+
+{research_context}
+
+Analyze this diet and provide a response in JSON format with these keys:
+1. "assessment": Overall assessment of the diet's nutritional value
+2. "deficiencies": [Potential nutritional deficiencies with confidence scores (0-100)]
+3. "recommendations": [Specific foods or supplements to consider adding]
+4. "concerns": [Potential health concerns related to this diet]
+5. "positives": [Positive aspects of the current diet]
+
+Your response must be valid JSON that can be parsed programmatically.
+"""
         
         try:
             # Call Together AI API
-            response = self._call_together_ai(prompt)
+            response_text = self._call_together_ai(prompt)
             
-            # Process and structure the response
+            # Extract JSON from response
+            try:
+                # Find JSON content between triple backticks if present
+                if "```json" in response_text and "```" in response_text.split("```json", 1)[1]:
+                    json_str = response_text.split("```json", 1)[1].split("```", 1)[0].strip()
+                    diet_data = json.loads(json_str)
+                else:
+                    # Try to parse the entire response as JSON
+                    diet_data = json.loads(response_text)
+            except json.JSONDecodeError:
+                # Fallback: create structured response from unstructured text
+                logger.warning("Failed to parse JSON response for diet analysis", response=response_text[:100])
+                diet_data = {
+                    "assessment": "Unable to parse structured assessment from response",
+                    "deficiencies": ["Unable to parse deficiencies from response"],
+                    "recommendations": ["Consult with a nutritionist for personalized advice"],
+                    "concerns": ["Unable to determine concerns from the provided information"],
+                    "positives": ["Unable to determine positive aspects from the provided information"]
+                }
+            
+            # Add research results and disclaimer
             result = {
-                "analysis": response,
+                "analysis": diet_data,
+                "related_research": research_results,
                 "disclaimer": "This information is for educational purposes only and not a substitute for professional nutritional advice."
             }
             
             # Cache the result
             cache.set(cache_key, result, self.cache_timeout)
+            logger.info("Diet analysis completed successfully")
             
             return result
         except Exception as e:
-            return {"error": str(e), "message": "Unable to process diet analysis at this time."}
+            logger.error("Error in diet analysis", error=str(e))
+            return {
+                "error": str(e), 
+                "message": "Unable to process diet analysis at this time.",
+                "disclaimer": "Please consult with a nutritionist for professional advice."
+            }
+    
+    @shared_task
+    def analyze_medication(self, medication_info, user_profile=None):
+        """
+        Analyze medication information and provide insights
+        
+        Args:
+            medication_info (str): User's medication information
+            user_profile (dict, optional): User profile data for personalized analysis
+            
+        Returns:
+            dict: Medication analysis results
+        """
+        # Preprocess input
+        if not medication_info or len(medication_info.strip()) < 3:
+            return {
+                "error": "Insufficient medication information",
+                "message": "Please provide more details about your medications for analysis."
+            }
+            
+        # Generate cache key
+        cache_key = f"medication_{hash(medication_info)}_{hash(str(user_profile))}"
+        cached_result = cache.get(cache_key)
+        
+        if cached_result:
+            logger.info("Returning cached medication analysis")
+            return cached_result
+        
+        # Build context with user profile
+        context = self._build_user_context(user_profile)
+        
+        # Get relevant research
+        research_results = self.get_medical_research(f"medication {medication_info} interactions", limit=2)
+        research_context = ""
+        if research_results:
+            research_context = "Relevant medication research:\n"
+            for i, article in enumerate(research_results):
+                research_context += f"{i+1}. {article.get('title')} ({article.get('journal')}): "
+                research_context += f"{article.get('abstract')[:200]}...\n"
+        
+        # Prepare prompt for the LLM
+        prompt = f"""You are Praxia, a medical AI assistant specializing in pharmacology. {self.identity}
+
+{context}
+
+Based on this medication information: {medication_info}
+
+{research_context}
+
+Analyze these medications and provide a response in JSON format with these keys:
+1. "overview": General information about the medications mentioned
+2. "interactions": [Potential interactions between medications, with severity levels]
+3. "side_effects": [Common side effects to be aware of]
+4. "precautions": [Important precautions when taking these medications]
+5. "questions": [Questions the patient should ask their healthcare provider]
+
+Your response must be valid JSON that can be parsed programmatically.
+"""
+        
+        try:
+            # Call Together AI API
+            response_text = self._call_together_ai(prompt)
+            
+            # Extract JSON from response
+            try:
+                # Find JSON content between triple backticks if present
+                if "```json" in response_text and "```" in response_text.split("```json", 1)[1]:
+                    json_str = response_text.split("```json", 1)[1].split("```", 1)[0].strip()
+                    medication_data = json.loads(json_str)
+                else:
+                    # Try to parse the entire response as JSON
+                    medication_data = json.loads(response_text)
+            except json.JSONDecodeError:
+                # Fallback: create structured response from unstructured text
+                logger.warning("Failed to parse JSON response for medication analysis", response=response_text[:100])
+                medication_data = {
+                    "overview": response_text,
+                    "interactions": ["Unable to parse interactions from response"],
+                    "side_effects": ["Consult with a healthcare provider for side effect information"],
+                    "precautions": ["Consult with a healthcare provider before changing any medication regimen"],
+                    "questions": ["Ask your doctor about potential interactions with your current medications"]
+                }
+            
+            # Add research results and disclaimer
+            result = {
+                "analysis": medication_data,
+                "related_research": research_results,
+                "disclaimer": "This information is for educational purposes only. Always consult with a healthcare provider before making any changes to your medication regimen."
+            }
+            
+            # Cache the result
+            cache.set(cache_key, result, self.cache_timeout)
+            logger.info("Medication analysis completed successfully")
+            
+            return result
+        except Exception as e:
+            logger.error("Error in medication analysis", error=str(e))
+            return {
+                "error": str(e), 
+                "message": "Unable to process medication analysis at this time.",
+                "disclaimer": "Please consult with a healthcare provider for professional advice."
+            }
     
     def _call_together_ai(self, prompt):
         """
@@ -343,11 +610,18 @@ class PraxiaAI:
         
         try:
             response = requests.post(url, json=payload, headers=headers)
+            response.raise_for_status()  # Raise exception for HTTP errors
+            
             if response.status_code == 200:
                 return response.json()["choices"][0]["text"].strip()
             else:
                 raise Exception(f"API call failed with status {response.status_code}: {response.text}")
+        except requests.exceptions.RequestException as e:
+            logger.error("Error calling Together AI API", error=str(e))
+            raise Exception(f"API request failed: {str(e)}")
+        except (KeyError, IndexError, json.JSONDecodeError) as e:
+            logger.error("Error parsing API response", error=str(e))
+            raise Exception(f"Failed to parse API response: {str(e)}")
         except Exception as e:
-            print(f"Error calling Together AI API: {e}")
-            # Fallback response for development/testing
-            return "Based on the information provided, here is my analysis... [This is a fallback response]"
+            logger.error("Unexpected error in API call", error=str(e))
+            raise Exception(f"Unexpected error: {str(e)}")
