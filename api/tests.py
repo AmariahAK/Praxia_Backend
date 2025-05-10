@@ -8,6 +8,7 @@ from factory.django import DjangoModelFactory
 from api.models import UserProfile, ChatSession, ChatMessage, MedicalConsultation, XRayAnalysis, ResearchQuery
 from api.AI.praxia_model import PraxiaAI
 import json
+from .serializers import (ChatMessageSerializer, MedicalConsultationSerializer)
 
 # Factories
 class UserFactory(DjangoModelFactory):
