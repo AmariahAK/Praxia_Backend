@@ -13,3 +13,7 @@ numpy
 python-decouple
 django-cors-headers
 pillow
+django-redis
+channels
+channels-redis
+netaddr

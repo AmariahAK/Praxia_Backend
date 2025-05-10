@@ -1,0 +1,64 @@
+
+services:
+  web:
+    build: .
+    command: daphne -b 0.0.0.0 -p 8000 praxia_backend.asgi:application
+    volumes:
+      - .:/app
+      - static_volume:/app/staticfiles
+      - media_volume:/app/media
+    ports:
+      - "8000:8000"
+    env_file:
+      - ./.env
+    depends_on:
+      - db
+      - redis
+    restart: always
+
+  db:
+    image: postgres:14
+    volumes:
+      - postgres_data:/var/lib/postgresql/data/
+    environment:
+      - POSTGRES_DB=${DB_NAME}
+      - POSTGRES_USER=${DB_USER}
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+    ports:
+      - "5432:5432"
+    restart: always
+
+  redis:
+    image: redis:7
+    ports:
+      - "6379:6379"
+    restart: always
+
+  celery:
+    build: .
+    command: celery -A praxia_backend worker -l INFO
+    volumes:
+      - .:/app
+    env_file:
+      - ./.env
+    depends_on:
+      - web
+      - redis
+    restart: always
+
+  celery-beat:
+    build: .
+    command: celery -A praxia_backend beat -l INFO
+    volumes:
+      - .:/app
+    env_file:
+      - ./.env
+    depends_on:
+      - web
+      - redis
+    restart: always
+
+volumes:
+  postgres_data:
+  static_volume:
+  media_volume:
