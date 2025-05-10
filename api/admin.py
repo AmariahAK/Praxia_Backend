@@ -32,6 +32,7 @@ class MedicalConsultationAdmin(admin.ModelAdmin):
     list_display = ('id', 'user', 'created_at')
     search_fields = ('symptoms', 'diagnosis', 'user__username')
     list_filter = ('created_at',)
+    readonly_fields = ('diagnosis',)
 
 @admin.register(XRayAnalysis)
 class XRayAnalysisAdmin(admin.ModelAdmin):

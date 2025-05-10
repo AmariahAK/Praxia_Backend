@@ -3,6 +3,7 @@ from django.dispatch import receiver
 from django.contrib.auth.models import User
 from .models import UserProfile, XRayAnalysis
 from .AI.praxia_model import PraxiaAI
+import json
 
 @receiver(post_save, sender=User)
 def create_user_profile(sender, instance, created, **kwargs):
@@ -21,4 +22,6 @@ def process_xray_analysis(sender, instance, created, **kwargs):
     if created and instance.image and not instance.analysis_result:
         # Process the X-ray image asynchronously
         praxia = PraxiaAI()
-        praxia.analyze_xray.delay(instance.image.path)
+        result = praxia.analyze_xray.delay(instance.image.path)
+        instance.analysis_result = json.dumps(result.get())
+        instance.save()

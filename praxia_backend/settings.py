@@ -33,6 +33,7 @@ INSTALLED_APPS = [
     'rest_framework',
     'rest_framework.authtoken',
     'corsheaders',
+    'django_filters',
 ]
 
 MIDDLEWARE = [
@@ -45,6 +46,19 @@ MIDDLEWARE = [
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
+
+REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': [
+        'rest_framework.authentication.TokenAuthentication',
+        'rest_framework.authentication.SessionAuthentication',
+    ],
+    'DEFAULT_PERMISSION_CLASSES': [
+        'rest_framework.permissions.IsAuthenticated',
+    ],
+    'DEFAULT_FILTER_BACKENDS': [
+        'django_filters.rest_framework.DjangoFilterBackend',
+    ],
+}
 
 ROOT_URLCONF = 'praxia_backend.urls'
 
@@ -154,3 +168,19 @@ INITIALIZE_XRAY_MODEL = config('INITIALIZE_XRAY_MODEL', default=False, cast=bool
 
 # Health check settings
 HEALTH_CHECK_INTERVAL = config('HEALTH_CHECK_INTERVAL', default=14 * 60, cast=int)  # 14 minutes in seconds
+
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+        },
+    },
+    'loggers': {
+        '': {
+            'handlers': ['console'],
+            'level': 'INFO',
+        },
+    },
+}

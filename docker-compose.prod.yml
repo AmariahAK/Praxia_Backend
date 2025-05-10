@@ -1,4 +1,3 @@
-
 services:
   web:
     build: .
@@ -84,7 +83,22 @@ services:
     volumes:
       - ./nginx/certbot/conf:/etc/letsencrypt
       - ./nginx/certbot/www:/var/www/certbot
-    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait ${!}; done;'"
+
+  monai:
+    image: projectmonai/monai:latest
+    ports:
+      - "8888:8888"
+    volumes:
+      - ./data/models:/models
+
+  sam:
+    image: sam-med2d:latest
+    build:
+      context: .
+      dockerfile: Dockerfile.sam
+    volumes:
+      - ./data/models:/models
 
 volumes:
   postgres_data:

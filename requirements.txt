@@ -31,3 +31,8 @@ black
 isort
 flake8
 mypy
+transformers
+beautifulsoup4
+structlog
+django-storages
+boto3
