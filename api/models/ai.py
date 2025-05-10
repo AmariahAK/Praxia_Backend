@@ -3,10 +3,10 @@ from django.contrib.auth.models import User
 
 class ChatSession(models.Model):
     """Record of a chat session between a user and Praxia"""
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='chat_sessions')
-    title = models.CharField(max_length=255, default="New Chat")
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='chat_sessions', db_index=True)
+    title = models.CharField(max_length=255, default="New Chat", db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    updated_at = models.DateTimeField(auto_now=True, db_index=True)
     
     def __str__(self):
         return f"Chat with {self.user.username} - {self.title}"
@@ -18,43 +18,63 @@ class ChatMessage(models.Model):
         ('assistant', 'Assistant'),
     )
     
-    session = models.ForeignKey(ChatSession, on_delete=models.CASCADE, related_name='messages')
-    role = models.CharField(max_length=10, choices=ROLE_CHOICES)
+    session = models.ForeignKey(ChatSession, on_delete=models.CASCADE, related_name='messages', db_index=True)
+    role = models.CharField(max_length=10, choices=ROLE_CHOICES, db_index=True)
     content = models.TextField()
-    created_at = models.DateTimeField(auto_now_add=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
     
     class Meta:
         ordering = ['created_at']
+        indexes = [
+            models.Index(fields=['session', 'created_at']),
+            models.Index(fields=['role', 'created_at']),
+        ]
     
     def __str__(self):
         return f"{self.role} message in {self.session}"
 
 class MedicalConsultation(models.Model):
     """Record of a user's medical consultation with Praxia"""
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='consultations')
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='consultations', db_index=True)
     symptoms = models.TextField()
     diagnosis = models.TextField()
-    created_at = models.DateTimeField(auto_now_add=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    
+    class Meta:
+        indexes = [
+            models.Index(fields=['user', 'created_at']),
+        ]
     
     def __str__(self):
         return f"Consultation for {self.user.username} on {self.created_at.strftime('%Y-%m-%d')}"
 
 class XRayAnalysis(models.Model):
     """Record of an X-ray analysis"""
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='xray_analyses')
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='xray_analyses', db_index=True)
     image = models.ImageField(upload_to='xrays/')
     analysis_result = models.TextField()
-    created_at = models.DateTimeField(auto_now_add=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    
+    class Meta:
+        indexes = [
+            models.Index(fields=['user', 'created_at']),
+        ]
     
     def __str__(self):
         return f"X-Ray Analysis for {self.user.username} on {self.created_at.strftime('%Y-%m-%d')}"
 
 class ResearchQuery(models.Model):
     """Record of a medical research query"""
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='research_queries')
-    query = models.CharField(max_length=255)
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='research_queries', db_index=True)
+    query = models.CharField(max_length=255, db_index=True)
     results = models.JSONField()
-    created_at = models.DateTimeField(auto_now_add=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    
+    class Meta:
+        indexes = [
+            models.Index(fields=['user', 'query']),
+            models.Index(fields=['user', 'created_at']),
+        ]
     
     def __str__(self):
         return f"Research Query: {self.query}"

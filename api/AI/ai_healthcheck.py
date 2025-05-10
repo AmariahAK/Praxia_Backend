@@ -14,6 +14,11 @@ from transformers import SamModel, SamProcessor
 from celery import shared_task
 from bs4 import BeautifulSoup
 import structlog
+from ..circuit_breaker import (
+    who_breaker, mayo_breaker, together_ai_breaker, pubmed_breaker,
+    circuit_breaker_with_fallback, retry_with_backoff, cache_result,
+    who_api_fallback, mayo_clinic_fallback, together_ai_fallback, pubmed_fallback
+)
 
 logger = structlog.get_logger(__name__)
 
@@ -89,16 +94,11 @@ class PraxiaAI:
             self.sam_model = None
     
     @shared_task
+    @cache_result(timeout=60*60*24, key_prefix='diagnosis')
     def diagnose_symptoms(self, symptoms, user_profile=None):
         """
         Analyze symptoms and provide potential diagnoses
         """
-        cache_key = f"diagnosis_{hash(symptoms)}_{hash(str(user_profile))}"
-        cached_result = cache.get(cache_key)
-        if cached_result:
-            logger.info("Returning cached diagnosis", cache_key=cache_key)
-            return cached_result
-        
         context = self._build_user_context(user_profile)
         who_guidelines = self._fetch_who_guidelines(symptoms)
         mayo_info = self._scrape_mayo_clinic(symptoms)
@@ -133,7 +133,6 @@ class PraxiaAI:
             result = json.loads(response)
             result["related_research"] = self.get_medical_research(symptoms, limit=3)
             result["disclaimer"] = "This is for educational purposes only."
-            cache.set(cache_key, result, self.cache_timeout)
             logger.info("Diagnosis generated", symptoms=symptoms)
             return result
         except Exception as e:
@@ -195,16 +194,12 @@ class PraxiaAI:
             return {"error": str(e), "message": "Unable to process X-ray."}
     
     @shared_task
+    @circuit_breaker_with_fallback(pubmed_breaker, pubmed_fallback)
+    @cache_result(timeout=60*60*24, key_prefix='research')
     def get_medical_research(self, query, limit=5):
         """
         Retrieve relevant medical research from PubMed
         """
-        cache_key = f"research_{hash(query)}_{limit}"
-        cached_result = cache.get(cache_key)
-        if cached_result:
-            logger.info("Returning cached research", cache_key=cache_key)
-            return cached_result
-        
         try:
             search_term = f"{query} AND (Review[ptyp] OR Clinical Trial[ptyp])"
             results = self.pubmed_client.query(search_term, max_results=limit)
@@ -216,27 +211,18 @@ class PraxiaAI:
                 "doi": article.doi if hasattr(article, 'doi') else None,
                 "abstract": article.abstract if hasattr(article, 'abstract') else "No abstract available"
             } for article in results]
-            cache.set(cache_key, articles, self.cache_timeout)
             logger.info("Research fetched", query=query)
             return articles
         except Exception as e:
             logger.error("Research query failed", error=str(e), query=query)
-            return [
-                {"title": "Recent advances in medical diagnosis", "authors": "Smith J, et al.", "journal": "Medical Journal", "publication_date": "2023"},
-                {"title": "Clinical guidelines for symptom management", "authors": "Johnson M, et al.", "journal": "Healthcare Research", "publication_date": "2022"}
-            ]
+            raise  # Let the circuit breaker handle this
     
     @shared_task
+    @cache_result(timeout=60*60*24, key_prefix='diet')
     def analyze_diet(self, diet_info, user_profile=None):
         """
         Analyze diet information and provide nutritional recommendations
         """
-        cache_key = f"diet_{hash(diet_info)}_{hash(str(user_profile))}"
-        cached_result = cache.get(cache_key)
-        if cached_result:
-            logger.info("Returning cached diet analysis", cache_key=cache_key)
-            return cached_result
-        
         context = self._build_user_context(user_profile)
         prompt = f"""You are Praxia, a medical AI assistant. {self.identity}
         
@@ -259,13 +245,14 @@ class PraxiaAI:
             response = self._call_together_ai(prompt)
             result = json.loads(response)
             result["disclaimer"] = "This is for educational purposes only."
-            cache.set(cache_key, result, self.cache_timeout)
             logger.info("Diet analysis generated", diet_info=diet_info)
             return result
         except Exception as e:
             logger.error("Diet analysis failed", error=str(e), diet_info=diet_info)
             return {"error": str(e), "message": "Unable to process diet analysis."}
     
+    @circuit_breaker_with_fallback(together_ai_breaker, together_ai_fallback)
+    @retry_with_backoff(max_retries=3, initial_backoff=1, backoff_factor=2)
     def _call_together_ai(self, prompt):
         """Call Together AI API"""
         url = "https://api.together.xyz/v1/completions"
@@ -285,62 +272,37 @@ class PraxiaAI:
             "Authorization": f"Bearer {self.together_api_key}"
         }
         
-        try:
-            response = requests.post(url, json=payload, headers=headers)
-            response.raise_for_status()
-            return response.json()["choices"][0]["text"].strip()
-        except Exception as e:
-            logger.error("Together AI API call failed", error=str(e))
-            return json.dumps({
-                "error": "API unavailable",
-                "message": "Fallback response: please consult a healthcare professional."
-            })
+        response = requests.post(url, json=payload, headers=headers)
+        response.raise_for_status()
+        return response.json()["choices"][0]["text"].strip()
     
+    @circuit_breaker_with_fallback(who_breaker, who_api_fallback)
+    @cache_result(timeout=60*60*24, key_prefix='who')
     def _fetch_who_guidelines(self, query):
         """Fetch WHO guidelines for a disease or symptom"""
-        cache_key = f"who_{hash(query)}"
-        cached_result = cache.get(cache_key)
-        if cached_result:
-            logger.info("Returning cached WHO guidelines", cache_key=cache_key)
-            return cached_result
-        
-        try:
-            response = requests.get(
-                "https://ghoapi.azureedge.net/api/Indicator",
-                params={"$filter": f"contains(IndicatorName, '{query}')"},
-                timeout=5
-            )
-            response.raise_for_status()
-            data = response.json()["value"]
-            guidelines = " ".join([item["IndicatorName"] for item in data[:3]])
-            cache.set(cache_key, guidelines, self.cache_timeout)
-            logger.info("WHO guidelines fetched", query=query)
-            return guidelines
-        except Exception as e:
-            logger.error("WHO API call failed", error=str(e), query=query)
-            return "WHO guidelines unavailable; consult local health authorities."
+        response = requests.get(
+            "https://ghoapi.azureedge.net/api/Indicator",
+            params={"$filter": f"contains(IndicatorName, '{query}')"},
+            timeout=5
+        )
+        response.raise_for_status()
+        data = response.json()["value"]
+        guidelines = " ".join([item["IndicatorName"] for item in data[:3]])
+        logger.info("WHO guidelines fetched", query=query)
+        return guidelines
     
+    @circuit_breaker_with_fallback(mayo_breaker, mayo_clinic_fallback)
+    @cache_result(timeout=60*60*24, key_prefix='mayo')
     def _scrape_mayo_clinic(self, query):
         """Scrape Mayo Clinic for symptom or disease info"""
-        cache_key = f"mayo_{hash(query)}"
-        cached_result = cache.get(cache_key)
-        if cached_result:
-            logger.info("Returning cached Mayo Clinic data", cache_key=cache_key)
-            return cached_result
-        
-        try:
-            url = f"https://www.mayoclinic.org/diseases-conditions/{query.replace(' ', '-')}"
-            response = requests.get(url, timeout=5)
-            response.raise_for_status()
-            soup = BeautifulSoup(response.text, "html.parser")
-            content = soup.find("div", class_="content")
-            info = content.text.strip() if content else "No data found."
-            cache.set(cache_key, info, self.cache_timeout)
-            logger.info("Mayo Clinic data scraped", query=query)
-            return info
-        except Exception as e:
-            logger.error("Mayo Clinic scraping failed", error=str(e), query=query)
-            return "Mayo Clinic data unavailable; refer to standard medical resources."
+        url = f"https://www.mayoclinic.org/diseases-conditions/{query.replace(' ', '-')}"
+        response = requests.get(url, timeout=5)
+        response.raise_for_status()
+        soup = BeautifulSoup(response.text, "html.parser")
+        content = soup.find("div", class_="content")
+        info = content.text.strip() if content else "No data found."
+        logger.info("Mayo Clinic data scraped", query=query)
+        return info
     
     def _build_user_context(self, user_profile):
         """Build context from user profile"""
@@ -351,3 +313,222 @@ class PraxiaAI:
         if user_profile.get('allergies'):
             context += f"Allergies: {user_profile.get('allergies')}. "
         return context
+
+# Add health check functions for Celery tasks
+@shared_task
+def scheduled_health_check():
+    """Scheduled health check to ensure all services are operational"""
+    from ..circuit_breaker import check_circuit_breakers
+    
+    results = {
+        "timestamp": str(datetime.now()),
+        "status": "operational",
+        "services": {}
+    }
+    
+    # Check database connection
+    try:
+        from django.db import connections
+        connections['default'].cursor()
+        results["services"]["database"] = "operational"
+    except Exception as e:
+        results["services"]["database"] = f"error: {str(e)}"
+        results["status"] = "degraded"
+    
+    # Check Redis connection
+    try:
+        from django.core.cache import cache
+        cache.set('health_check', 'ok', 10)
+        assert cache.get('health_check') == 'ok'
+        results["services"]["redis"] = "operational"
+    except Exception as e:
+        results["services"]["redis"] = f"error: {str(e)}"
+        results["status"] = "degraded"
+    
+        # Check circuit breakers
+    circuit_breaker_status = check_circuit_breakers()
+    results["services"]["circuit_breakers"] = circuit_breaker_status
+    
+    # Check external services
+    external_services = {
+        "who_api": who_breaker,
+        "mayo_clinic": mayo_breaker,
+        "together_ai": together_ai_breaker,
+        "pubmed": pubmed_breaker
+    }
+    
+    for name, breaker in external_services.items():
+        if breaker.current_state == pybreaker.STATE_CLOSED:
+            results["services"][name] = "operational"
+        else:
+            results["services"][name] = "degraded"
+            results["status"] = "degraded"
+    
+    # Check AI models
+    try:
+        praxia = PraxiaAI()
+        if settings.INITIALIZE_XRAY_MODEL:
+            results["services"]["xray_model"] = "operational" if praxia.xray_model else "not_loaded"
+            results["services"]["sam_model"] = "operational" if praxia.sam_model else "not_loaded"
+        else:
+            results["services"]["xray_model"] = "disabled"
+            results["services"]["sam_model"] = "disabled"
+    except Exception as e:
+        results["services"]["ai_models"] = f"error: {str(e)}"
+        results["status"] = "degraded"
+    
+    # Check Celery workers
+    try:
+        from celery.task.control import inspect
+        insp = inspect()
+        if not insp.ping():
+            results["services"]["celery"] = "no_workers_online"
+            results["status"] = "degraded"
+        else:
+            results["services"]["celery"] = "operational"
+            
+            # Check active tasks
+            active = insp.active()
+            if active:
+                results["services"]["celery_active_tasks"] = sum(len(tasks) for tasks in active.values())
+            
+            # Check queue lengths
+            from django.conf import settings
+            import redis
+            redis_client = redis.Redis.from_url(settings.CELERY_BROKER_URL)
+            queue_length = redis_client.llen('celery')
+            results["services"]["celery_queue_length"] = queue_length
+            
+            if queue_length > 100:  # Arbitrary threshold
+                results["services"]["celery_queue_status"] = "backlogged"
+                results["status"] = "degraded"
+            else:
+                results["services"]["celery_queue_status"] = "normal"
+    except Exception as e:
+        results["services"]["celery"] = f"error: {str(e)}"
+        results["status"] = "degraded"
+    
+    # Store health check results in cache
+    cache.set('health_check_results', results, 60 * 15)  # Cache for 15 minutes
+    
+    # Log health check results
+    if results["status"] == "operational":
+        logger.info("Health check passed", services=results["services"])
+    else:
+        logger.warning("Health check detected issues", services=results["services"])
+    
+    return results
+
+@shared_task
+def startup_health_check():
+    """Health check to run at startup"""
+    from datetime import datetime
+    
+    logger.info("Running startup health check")
+    
+    results = {
+        "timestamp": str(datetime.now()),
+        "status": "operational",
+        "services": {}
+    }
+    
+    # Check database connection
+    try:
+        from django.db import connections
+        connections['default'].cursor()
+        results["services"]["database"] = "operational"
+        logger.info("Database connection successful")
+    except Exception as e:
+        results["services"]["database"] = f"error: {str(e)}"
+        results["status"] = "degraded"
+        logger.error("Database connection failed", error=str(e))
+    
+    # Check Redis connection
+    try:
+        from django.core.cache import cache
+        cache.set('startup_health_check', 'ok', 10)
+        assert cache.get('startup_health_check') == 'ok'
+        results["services"]["redis"] = "operational"
+        logger.info("Redis connection successful")
+    except Exception as e:
+        results["services"]["redis"] = f"error: {str(e)}"
+        results["status"] = "degraded"
+        logger.error("Redis connection failed", error=str(e))
+    
+    # Check AI model initialization
+    try:
+        if settings.INITIALIZE_XRAY_MODEL:
+            praxia = PraxiaAI()
+            results["services"]["xray_model"] = "operational" if praxia.xray_model else "not_loaded"
+            results["services"]["sam_model"] = "operational" if praxia.sam_model else "not_loaded"
+            logger.info(
+                "AI models initialization check", 
+                xray_model=results["services"]["xray_model"],
+                sam_model=results["services"]["sam_model"]
+            )
+        else:
+            results["services"]["xray_model"] = "disabled"
+            results["services"]["sam_model"] = "disabled"
+            logger.info("AI models disabled in settings")
+    except Exception as e:
+        results["services"]["ai_models"] = f"error: {str(e)}"
+        results["status"] = "degraded"
+        logger.error("AI model initialization check failed", error=str(e))
+    
+    # Store startup health check results
+    cache.set('startup_health_check_results', results, 60 * 60 * 24)  # Cache for 24 hours
+    
+    # Log overall status
+    if results["status"] == "operational":
+        logger.info("Startup health check passed")
+    else:
+        logger.warning("Startup health check detected issues", services=results["services"])
+    
+    return results
+
+# Add a WebSocket health check function
+@shared_task
+def websocket_health_check():
+    """Check WebSocket server health"""
+    from datetime import datetime
+    import asyncio
+    import websockets
+    
+    async def check_websocket():
+        try:
+            uri = f"ws://localhost:8000/ws/health/"
+            async with websockets.connect(uri) as websocket:
+                await websocket.send(json.dumps({"type": "ping"}))
+                response = await websocket.recv()
+                data = json.loads(response)
+                return data.get("type") == "pong"
+        except Exception as e:
+            logger.error("WebSocket health check failed", error=str(e))
+            return False
+    
+    try:
+        result = asyncio.run(check_websocket())
+        status = "operational" if result else "degraded"
+        
+        results = {
+            "timestamp": str(datetime.now()),
+            "service": "websocket",
+            "status": status
+        }
+        
+        cache.set('websocket_health_check_results', results, 60 * 15)  # Cache for 15 minutes
+        
+        if status == "operational":
+            logger.info("WebSocket health check passed")
+        else:
+            logger.warning("WebSocket health check failed")
+        
+        return results
+    except Exception as e:
+        logger.error("WebSocket health check error", error=str(e))
+        return {
+            "timestamp": str(datetime.now()),
+            "service": "websocket",
+            "status": "error",
+            "error": str(e)
+        }

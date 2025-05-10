@@ -25,6 +25,39 @@ python manage.py collectstatic --no-input
 mkdir -p /app/media/profile_pics
 mkdir -p /app/media/xrays
 mkdir -p /app/data/models
+mkdir -p /app/prometheus
+
+# Create Prometheus config if it doesn't exist
+if [ ! -f /app/prometheus/prometheus.yml ]; then
+  echo "Creating Prometheus config..."
+  cat > /app/prometheus/prometheus.yml << EOF
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: 'praxia'
+    scrape_interval: 5s
+    static_configs:
+      - targets: ['web:8000']
+
+  - job_name: 'node-exporter'
+    static_configs:
+      - targets: ['node-exporter:9100']
+
+  - job_name: 'cadvisor'
+    static_configs:
+      - targets: ['cadvisor:8080']
+
+  - job_name: 'redis'
+    static_configs:
+      - targets: ['redis-exporter:9121']
+
+  - job_name: 'postgres'
+    static_configs:
+      - targets: ['postgres-exporter:9187']
+EOF
+fi
 
 # Run health check
 echo "Running initial health check..."
