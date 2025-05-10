@@ -1,5 +1,6 @@
 import os
 from celery import Celery
+from celery.schedules import crontab
 
 # Set the default Django settings module for the 'celery' program.
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'praxia_backend.settings')
@@ -13,6 +14,10 @@ app.config_from_object('django.conf:settings', namespace='CELERY')
 # Load task modules from all registered Django app configs.
 app.autodiscover_tasks()
 
-@app.task(bind=True, ignore_result=True)
-def debug_task(self):
-    print(f'Request: {self.request!r}')
+# Configure periodic tasks
+app.conf.beat_schedule = {
+    'run-health-check-every-14-minutes': {
+        'task': 'api.AI.ai_healthcheck.scheduled_health_check',
+        'schedule': crontab(minute='*/14'),  # Run every 14 minutes
+    },
+}

@@ -4,18 +4,36 @@ FROM python:3.13-slim
 ENV PYTHONDONTWRITEBYTECODE 1
 ENV PYTHONUNBUFFERED 1
 
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    netcat-traditional \
+    gcc \
+    libc6-dev \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
 # Set work directory
 WORKDIR /app
 
-# Install dependencies
+# Install Python dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy project
 COPY . .
 
-# Run entrypoint script
-COPY ./entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
+# Make entrypoint executable
+RUN chmod +x /app/entrypoint.sh
 
-ENTRYPOINT ["/entrypoint.sh"]
+# Create necessary directories
+RUN mkdir -p /app/media/profile_pics
+RUN mkdir -p /app/media/xrays
+RUN mkdir -p /app/data/models
+RUN mkdir -p /app/staticfiles
+
+# Set permissions
+RUN chmod -R 755 /app/media
+RUN chmod -R 755 /app/staticfiles
+RUN chmod -R 755 /app/data
+
+ENTRYPOINT ["/app/entrypoint.sh"]

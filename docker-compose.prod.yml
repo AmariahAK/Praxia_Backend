@@ -1,9 +1,7 @@
-version: '3.8'
 
 services:
   web:
     build: .
-    command: daphne -b 0.0.0.0 -p 8000 praxia_backend.asgi:application
     volumes:
       - static_volume:/app/staticfiles
       - media_volume:/app/media
@@ -11,6 +9,13 @@ services:
       - 8000
     env_file:
       - ./.env
+    environment:
+      - DB_HOST=db
+      - DB_PORT=5432
+      - DEBUG=False
+      - DJANGO_SUPERUSER_USERNAME=${DJANGO_SUPERUSER_USERNAME}
+      - DJANGO_SUPERUSER_EMAIL=${DJANGO_SUPERUSER_EMAIL}
+      - DJANGO_SUPERUSER_PASSWORD=${DJANGO_SUPERUSER_PASSWORD}
     depends_on:
       - db
       - redis
@@ -34,9 +39,13 @@ services:
     build: .
     command: celery -A praxia_backend worker -l INFO
     volumes:
-      - .:/app
+      - media_volume:/app/media
     env_file:
       - ./.env
+    environment:
+      - DB_HOST=db
+      - DB_PORT=5432
+      - DEBUG=False
     depends_on:
       - web
       - redis
@@ -45,10 +54,12 @@ services:
   celery-beat:
     build: .
     command: celery -A praxia_backend beat -l INFO
-    volumes:
-      - .:/app
     env_file:
       - ./.env
+    environment:
+      - DB_HOST=db
+      - DB_PORT=5432
+      - DEBUG=False
     depends_on:
       - web
       - redis
@@ -59,11 +70,21 @@ services:
     volumes:
       - static_volume:/app/staticfiles
       - media_volume:/app/media
+      - ./nginx/certbot/conf:/etc/letsencrypt
+      - ./nginx/certbot/www:/var/www/certbot
     ports:
       - "80:80"
+      - "443:443"
     depends_on:
       - web
     restart: always
+
+  certbot:
+    image: certbot/certbot
+    volumes:
+      - ./nginx/certbot/conf:/etc/letsencrypt
+      - ./nginx/certbot/www:/var/www/certbot
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
 
 volumes:
   postgres_data:

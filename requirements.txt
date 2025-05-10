@@ -17,3 +17,17 @@ django-redis
 channels
 channels-redis
 netaddr
+whitenoise
+django-filter
+markdown
+djangorestframework-simplejwt
+drf-yasg
+pytest
+pytest-django
+coverage
+factory-boy
+faker
+black
+isort
+flake8
+mypy
