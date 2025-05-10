@@ -22,6 +22,4 @@ def process_xray_analysis(sender, instance, created, **kwargs):
     if created and instance.image and not instance.analysis_result:
         # Process the X-ray image asynchronously
         praxia = PraxiaAI()
-        result = praxia.analyze_xray.delay(instance.image.path)
-        instance.analysis_result = json.dumps(result.get())
-        instance.save()
+        praxia.analyze_xray.delay(instance.image.path)  
