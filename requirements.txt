@@ -1,0 +1,15 @@
+django
+djangorestframework
+psycopg2-binary
+requests
+pymed
+gunicorn
+daphne
+celery
+redis
+torch
+monai
+numpy
+python-decouple
+django-cors-headers
+pillow
