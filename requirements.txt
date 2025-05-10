@@ -41,3 +41,4 @@ psutil
 pybreaker 
 requests-futures
 locust
+websockets

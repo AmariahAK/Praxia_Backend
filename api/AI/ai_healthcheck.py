@@ -1,5 +1,6 @@
 import os
 import requests
+import pybreaker
 import json
 import pymed
 import numpy as np
@@ -14,6 +15,7 @@ from transformers import SamModel, SamProcessor
 from celery import shared_task
 from bs4 import BeautifulSoup
 import structlog
+from datetime import datetime
 from ..circuit_breaker import (
     who_breaker, mayo_breaker, together_ai_breaker, pubmed_breaker,
     circuit_breaker_with_fallback, retry_with_backoff, cache_result,
@@ -379,7 +381,7 @@ def scheduled_health_check():
     
     # Check Celery workers
     try:
-        from celery.task.control import inspect
+        from  .ai_healthcheck import inspect
         insp = inspect()
         if not insp.ping():
             results["services"]["celery"] = "no_workers_online"
