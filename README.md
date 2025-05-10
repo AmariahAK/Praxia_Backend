@@ -10,17 +10,22 @@ Praxia is an AI-powered healthcare assistant backend system developed by Amariah
 - **Diet Analysis**: Nutritional assessment and personalized dietary recommendations
 - **User Profiles**: Personalized health profiles with medical history and preferences
 - **Chat System**: Persistent chat sessions with the AI assistant
+- **Real-time Communication**: WebSocket support for instant AI responses
+- **Circuit Breakers**: Resilience against external API failures with fallback responses
+- **Comprehensive Monitoring**: Prometheus and Grafana integration for system metrics
 
 ## Tech Stack
 
 - **Framework**: Django & Django REST Framework
-- **Database**: PostgreSQL
+- **Database**: PostgreSQL with connection pooling
 - **Cache & Message Broker**: Redis
 - **Task Queue**: Celery
 - **AI Integration**: Together AI API
 - **Medical Imaging**: MONAI
 - **Server**: Daphne (ASGI) with Nginx
 - **Containerization**: Docker & Docker Compose
+- **Monitoring**: Prometheus & Grafana
+- **WebSockets**: Django Channels
 
 ## Getting Started
 
@@ -111,6 +116,10 @@ For local development without Docker:
 - `GET /api/chat-sessions/{id}/messages/`: Get messages for a chat session
 - `POST /api/chat-sessions/{id}/messages/`: Send a message and get AI response
 
+### WebSocket Endpoints
+- `ws://localhost:8000/ws/chat/{session_id}/`: Real-time chat with the AI
+- `ws://localhost:8000/ws/health/`: Health check WebSocket endpoint
+
 ### System
 - `GET /api/health/`: Check system health status
 
@@ -128,6 +137,7 @@ This will start the application with production settings, including:
 - Nginx with SSL support
 - Optimized server configurations
 - Reduced debug information
+- Prometheus and Grafana for monitoring
 
 ### Environment Variables
 
@@ -143,6 +153,7 @@ Key environment variables for configuration:
 | `DB_PASSWORD` | Database password | `postgres` |
 | `TOGETHER_AI_API_KEY` | Together AI API key | None |
 | `TOGETHER_AI_MODEL` | AI model to use | `Qwen/Qwen2.5-7B-Instruct` |
+| `GRAFANA_ADMIN_PASSWORD` | Grafana admin password | `admin_password` |
 
 ## Rate Limiting
 
@@ -155,9 +166,37 @@ The API implements rate limiting to prevent abuse:
 | X-ray Analysis | 5/hour | 3/minute |
 | Research | 20/hour | 3/minute |
 
-## Health Checks
+## Resilience Features
 
+### Circuit Breakers
+The system implements circuit breakers for external API calls to prevent cascading failures:
+
+| Service | Failure Threshold | Reset Timeout |
+|---------|-------------------|---------------|
+| WHO API | 5 failures | 60 seconds |
+| Mayo Clinic | 5 failures | 60 seconds |
+| Together AI | 3 failures | 30 seconds |
+| PubMed | 5 failures | 60 seconds |
+
+### Caching
+Responses are cached to improve performance and reduce external API calls:
+
+| Data Type | Cache Duration |
+|-----------|---------------|
+| Diagnosis | 24 hours |
+| Research | 24 hours |
+| WHO Guidelines | 24 hours |
+| Mayo Clinic Data | 24 hours |
+
+## Monitoring
+
+### Health Checks
 The system performs automatic health checks every 14 minutes to ensure all components are functioning correctly. The health status can be checked at `/api/health/`.
+
+### Prometheus & Grafana
+- Prometheus metrics are available at port 9090
+- Grafana dashboards are available at port 3000
+- Default Grafana login: admin / admin_password
 
 ## Project Structure
 
@@ -168,12 +207,16 @@ praxia_backend/
 │   ├── models/             # Database models
 │   ├── serializers/        # API serializers
 │   ├── views/              # API views
-│   └── urls/               # URL routing
+│   ├── urls/               # URL routing
+│   ├── consumers/          # WebSocket consumers
+│   ├── circuit_breaker.py  # Circuit breaker implementation
+│   └── routing.py          # WebSocket routing
 ├── data/                   # Data files
 │   ├── ai_identity.txt     # AI identity information
 │   └── models/             # AI model weights
 ├── media/                  # User-uploaded files
 ├── nginx/                  # Nginx configuration
+├── prometheus/             # Prometheus configuration
 ├── praxia_backend/         # Project settings
 └── docker-compose.yml      # Docker configuration
 ```
