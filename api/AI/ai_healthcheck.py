@@ -1,5 +1,6 @@
 import os
 import requests
+import inspect
 import pybreaker
 import json
 import pymed
@@ -381,7 +382,6 @@ def scheduled_health_check():
     
     # Check Celery workers
     try:
-        from  .ai_healthcheck import inspect
         insp = inspect()
         if not insp.ping():
             results["services"]["celery"] = "no_workers_online"
