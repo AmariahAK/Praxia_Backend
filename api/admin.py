@@ -5,7 +5,8 @@ from .models import (
     ChatMessage, 
     MedicalConsultation, 
     XRayAnalysis, 
-    ResearchQuery
+    ResearchQuery,
+    HealthNews
 )
 
 # Register models
@@ -45,3 +46,10 @@ class ResearchQueryAdmin(admin.ModelAdmin):
     list_display = ('id', 'user', 'query', 'created_at')
     search_fields = ('query', 'user__username')
     list_filter = ('created_at',)
+
+@admin.register(HealthNews)
+class HealthNewsAdmin(admin.ModelAdmin):
+    list_display = ('title', 'source', 'published_date', 'created_at')
+    search_fields = ('title', 'summary', 'source')
+    list_filter = ('source', 'published_date', 'created_at')
+    readonly_fields = ('created_at',)

@@ -38,6 +38,11 @@ class MedicalConsultation(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='consultations', db_index=True)
     symptoms = models.TextField()
     diagnosis = models.TextField()
+    language = models.CharField(max_length=20, default='en', choices=(
+        ('en', 'English'),
+        ('sw', 'Swahili'),
+        ('es', 'Spanish'),
+    ))
     created_at = models.DateTimeField(auto_now_add=True, db_index=True)
     
     class Meta:
@@ -50,9 +55,19 @@ class MedicalConsultation(models.Model):
 
 class XRayAnalysis(models.Model):
     """Record of an X-ray analysis"""
+    CONDITION_CHOICES = (
+        ('pneumonia', 'Pneumonia'),
+        ('fracture', 'Fracture'),
+        ('tumor', 'Tumor'),
+        ('normal', 'Normal'),
+        ('other', 'Other'),
+    )
+    
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='xray_analyses', db_index=True)
     image = models.ImageField(upload_to='xrays/')
     analysis_result = models.TextField()
+    detected_conditions = models.JSONField(default=dict, blank=True)
+    confidence_scores = models.JSONField(default=dict, blank=True)
     created_at = models.DateTimeField(auto_now_add=True, db_index=True)
     
     class Meta:
@@ -78,3 +93,25 @@ class ResearchQuery(models.Model):
     
     def __str__(self):
         return f"Research Query: {self.query}"
+
+class HealthNews(models.Model):
+    """Record of health news articles"""
+    title = models.CharField(max_length=255)
+    source = models.CharField(max_length=100)
+    url = models.URLField()
+    summary = models.TextField()
+    original_content = models.TextField()
+    image_url = models.URLField(null=True, blank=True)
+    published_date = models.DateField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    
+    class Meta:
+        verbose_name_plural = "Health News"
+        ordering = ['-published_date', '-created_at']
+        indexes = [
+            models.Index(fields=['source', 'published_date']),
+            models.Index(fields=['created_at']),
+        ]
+    
+    def __str__(self):
+        return f"{self.title} ({self.source})"

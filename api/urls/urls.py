@@ -11,7 +11,8 @@ from ..views import (
     MedicalConsultationView,
     XRayAnalysisView,
     ResearchQueryView,
-    HealthCheckView
+    HealthCheckView,
+    HealthNewsView
 )
 
 # Create a router for ViewSets
@@ -46,4 +47,5 @@ urlpatterns = [
     
     # Research query URLs
     path('research/', ResearchQueryView.as_view(), name='research'),
+    path('health-news/', HealthNewsView.as_view(), name='health-news'),
 ]

@@ -112,6 +112,16 @@ services:
       - prometheus
     restart: always
 
+  libretranslate:
+    image: libretranslate/libretranslate
+    ports:
+      - "5000:5000"
+    environment:
+      - LT_LOAD_ONLY=es,sw,en
+      - LT_THREADS=4
+      - LT_MEMORY=100M
+    restart: always
+
   node-exporter:
     image: prom/node-exporter
     volumes:

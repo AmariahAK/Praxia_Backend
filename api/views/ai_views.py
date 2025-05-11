@@ -1,18 +1,20 @@
 from rest_framework import status, permissions, viewsets
 import json
+from ..models import TranslationService
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.parsers import MultiPartParser, FormParser
 from django.shortcuts import get_object_or_404
 from django_filters.rest_framework import DjangoFilterBackend
-from ..models import ChatSession, ChatMessage, MedicalConsultation, XRayAnalysis, ResearchQuery
+from ..models import ChatSession, ChatMessage, MedicalConsultation, XRayAnalysis, ResearchQuery, HealthNews
 from ..serializers import (
     ChatSessionSerializer, 
     ChatSessionListSerializer,
     ChatMessageSerializer, 
     MedicalConsultationSerializer, 
     XRayAnalysisSerializer, 
-    ResearchQuerySerializer
+    ResearchQuerySerializer,
+    HealthNewsSerializer
 )
 from ..AI.praxia_model import PraxiaAI
 from ..middleware.throttling import (
@@ -103,7 +105,7 @@ class MedicalConsultationView(APIView):
     permission_classes = [permissions.IsAuthenticated]
     throttle_classes = [AIConsultationRateThrottle]
     filter_backends = [DjangoFilterBackend]
-    filterset_fields = ['symptoms', 'created_at']
+    filterset_fields = ['symptoms', 'created_at', 'language']
     
     def get(self, request):
         """Get all consultations for the authenticated user"""
@@ -125,14 +127,39 @@ class MedicalConsultationView(APIView):
                 'allergies': request.user.profile.allergies
             }
             
+            # Get symptoms and language
+            symptoms = serializer.validated_data['symptoms']
+            language = serializer.validated_data.get('language', 'en')
+            
+            # Translate symptoms to English if needed
+            translator = TranslationService()
+            if language != 'en':
+                english_symptoms = translator.translate(symptoms, language, 'en')
+            else:
+                english_symptoms = symptoms
+            
+            # Process with AI
             praxia = PraxiaAI()
-            diagnosis_result = praxia.diagnose_symptoms(serializer.validated_data['symptoms'], user_profile)
+            diagnosis_result = praxia.diagnose_symptoms(english_symptoms, user_profile)
+            
+            # Translate diagnosis back to original language if needed
+            if language != 'en' and isinstance(diagnosis_result, dict):
+                # Convert diagnosis to JSON string
+                diagnosis_json = json.dumps(diagnosis_result)
+                # Translate the JSON string
+                translated_diagnosis = translator.translate(diagnosis_json, 'en', language)
+                # Try to parse it back to JSON
+                try:
+                    diagnosis_result = json.loads(translated_diagnosis)
+                except json.JSONDecodeError:
+                    # If parsing fails, keep the original diagnosis
+                    pass
             
             consultation = serializer.save(
                 user=request.user,
                 diagnosis=json.dumps(diagnosis_result)
             )
-            logger.info("Consultation created", user=request.user.username, symptoms=serializer.validated_data['symptoms'])
+            logger.info("Consultation created", user=request.user.username, symptoms=symptoms, language=language)
             return Response(MedicalConsultationSerializer(consultation).data, status=status.HTTP_201_CREATED)
         logger.error("Invalid consultation data", errors=serializer.errors)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
@@ -156,9 +183,29 @@ class XRayAnalysisView(APIView):
         """Upload an X-ray image for analysis"""
         serializer = XRayAnalysisSerializer(data=request.data, context={'request': request})
         if serializer.is_valid():
-            xray = serializer.save(user=request.user, analysis_result="Processing...")
+            xray = serializer.save(
+                user=request.user, 
+                analysis_result="Processing...",
+                detected_conditions={},
+                confidence_scores={}
+            )
+            
+            # Process the X-ray image asynchronously
             praxia = PraxiaAI()
             analysis_task = praxia.analyze_xray.delay(xray.image.path)
+            
+            # Set up a callback to update the analysis when complete
+            @analysis_task.on_success
+            def update_analysis(result, *args, **kwargs):
+                if isinstance(result, dict):
+                    xray.analysis_result = json.dumps(result)
+                    if 'detected_conditions' in result:
+                        xray.detected_conditions = result['detected_conditions']
+                    if 'confidence_scores' in result:
+                        xray.confidence_scores = result['confidence_scores']
+                    xray.save()
+                    logger.info("X-ray analysis updated", xray_id=xray.id)
+            
             logger.info("X-ray analysis queued", user=request.user.username, task_id=analysis_task.id)
             return Response(
                 XRayAnalysisSerializer(xray, context={'request': request}).data,
@@ -195,3 +242,52 @@ class ResearchQueryView(APIView):
             return Response(ResearchQuerySerializer(query).data, status=status.HTTP_201_CREATED)
         logger.error("Invalid research query", errors=serializer.errors)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+class HealthNewsView(APIView):
+    """View for health news"""
+    permission_classes = [permissions.IsAuthenticated]
+    throttle_classes = [AIResearchRateThrottle]
+    
+    def get(self, request):
+        """Get health news articles"""
+        source = request.query_params.get('source', 'all')
+        limit = min(int(request.query_params.get('limit', 3)), 10)  # Cap at 10 articles
+        
+        praxia = PraxiaAI()
+        news_task = praxia.scrape_health_news.delay(source=source, limit=limit)
+        
+        try:
+            # Wait for the task to complete with a timeout
+            news_articles = news_task.get(timeout=15)
+            
+            # Save articles to database if they don't exist
+            saved_articles = []
+            for article in news_articles:
+                obj, created = HealthNews.objects.get_or_create(
+                    url=article['url'],
+                    defaults={
+                        'title': article['title'],
+                        'source': article['source'],
+                        'summary': article.get('summary', ''),
+                        'original_content': article.get('content', ''),
+                        'image_url': article.get('image_url'),
+                        'published_date': article.get('published_date')
+                    }
+                )
+                saved_articles.append(HealthNewsSerializer(obj).data)
+            
+            logger.info("Health news retrieved", source=source, count=len(saved_articles))
+            return Response(saved_articles)
+        except Exception as e:
+            logger.error("Error retrieving health news", error=str(e))
+            
+            # Fallback: return cached news from database
+            articles = HealthNews.objects.filter(source__icontains=source if source != 'all' else '')[:limit]
+            if articles.exists():
+                serializer = HealthNewsSerializer(articles, many=True)
+                return Response(serializer.data)
+            
+            return Response(
+                {"error": str(e), "message": "Unable to retrieve health news at this time."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )

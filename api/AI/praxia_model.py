@@ -5,9 +5,11 @@ import pymed
 import numpy as np
 import torch
 import structlog
+from datetime import datetime
 from PIL import Image
 from io import BytesIO
 from django.conf import settings
+from bs4 import BeautifulSoup
 from django.core.cache import cache
 from monai.networks.nets import UNETR
 from monai.transforms import (
@@ -54,10 +56,10 @@ class PraxiaAI:
     def _initialize_xray_model(self):
         """Initialize the MONAI model for X-ray analysis"""
         try:
-            # Initialize UNETR model for X-ray analysis
+            # Initialize UNETR model for X-ray analysis with expanded conditions
             self.xray_model = UNETR(
                 in_channels=1,
-                out_channels=2,  # Binary classification (normal/abnormal)
+                out_channels=4,  # Multiple classification (normal, pneumonia, fracture, tumor)
                 img_size=(224, 224),
                 feature_size=16,
                 hidden_size=768,
@@ -76,6 +78,25 @@ class PraxiaAI:
                 logger.info("X-ray model loaded successfully")
             else:
                 logger.warning("X-ray model weights not found")
+                
+            # Initialize DenseNet121 for additional classification
+            try:
+                from monai.networks.nets import DenseNet121
+                self.densenet_model = DenseNet121(
+                    spatial_dims=2,
+                    in_channels=1,
+                    out_channels=3,  # Fracture, tumor, pneumonia
+                ).to(self.device)
+                
+                densenet_path = os.path.join(settings.BASE_DIR, 'data', 'models', 'densenet_xray.pth')
+                if os.path.exists(densenet_path):
+                    self.densenet_model.load_state_dict(torch.load(densenet_path, map_location=self.device))
+                    self.densenet_model.eval()
+                    logger.info("DenseNet model loaded successfully")
+            except Exception as e:
+                logger.error("Error initializing DenseNet model", error=str(e))
+                self.densenet_model = None
+                
         except Exception as e:
             logger.error("Error initializing X-ray model", error=str(e))
             self.xray_model = None
@@ -218,13 +239,13 @@ Your response must be valid JSON that can be parsed programmatically.
     @shared_task
     def analyze_xray(self, image_data):
         """
-        Analyze X-ray images using MONAI models
+        Analyze X-ray images using MONAI models with expanded condition detection
         
         Args:
             image_data: The X-ray image data (file path or bytes)
             
         Returns:
-            dict: Analysis results
+            dict: Analysis results with multiple condition detection
         """
         if not self.xray_model:
             logger.warning("X-ray model not initialized")
@@ -234,6 +255,14 @@ Your response must be valid JSON that can be parsed programmatically.
             }
         
         try:
+            # Cache key for results
+            cache_key = f"xray_analysis_{hash(str(image_data))}"
+            cached_result = cache.get(cache_key)
+            
+            if cached_result:
+                logger.info("Returning cached X-ray analysis")
+                return cached_result
+                
             # Preprocess the image
             transforms = Compose([
                 LoadImage(image_only=True),
@@ -255,34 +284,70 @@ Your response must be valid JSON that can be parsed programmatically.
             # Add batch dimension
             image = image.unsqueeze(0).to(self.device)
             
-            # Run inference
+            # Run inference with UNETR model
             with torch.no_grad():
                 output = self.xray_model(image)
                 probabilities = torch.softmax(output, dim=1)
-                abnormal_prob = probabilities[0, 1].item()
+                
+                # Get probabilities for each condition
+                normal_prob = probabilities[0, 0].item()
+                pneumonia_prob = probabilities[0, 1].item()
+                fracture_prob = probabilities[0, 2].item()
+                tumor_prob = probabilities[0, 3].item()
             
-            # Determine findings based on probability
+            # Run inference with DenseNet model if available for additional validation
+            densenet_results = {}
+            if hasattr(self, 'densenet_model') and self.densenet_model:
+                with torch.no_grad():
+                    densenet_output = self.densenet_model(image)
+                    densenet_probs = torch.softmax(densenet_output, dim=1)
+                    
+                    # Get probabilities from DenseNet
+                    densenet_results = {
+                        "fracture": densenet_probs[0, 0].item(),
+                        "tumor": densenet_probs[0, 1].item(),
+                        "pneumonia": densenet_probs[0, 2].item()
+                    }
+                    
+                    # Average the probabilities for more robust results
+                    fracture_prob = (fracture_prob + densenet_results["fracture"]) / 2
+                    tumor_prob = (tumor_prob + densenet_results["tumor"]) / 2
+                    pneumonia_prob = (pneumonia_prob + densenet_results["pneumonia"]) / 2
+            
+            # Determine findings based on probabilities
             findings = []
-            confidence_level = ""
-            if abnormal_prob > 0.7:
-                findings.append("Potential abnormality detected with high confidence")
-                confidence_level = "high"
-            elif abnormal_prob > 0.4:
-                findings.append("Possible abnormality detected with moderate confidence")
-                confidence_level = "moderate"
-            else:
+            confidence_scores = {
+                "normal": round(normal_prob * 100, 2),
+                "pneumonia": round(pneumonia_prob * 100, 2),
+                "fracture": round(fracture_prob * 100, 2),
+                "tumor": round(tumor_prob * 100, 2)
+            }
+            
+            # Determine detected conditions (those with >30% confidence)
+            detected_conditions = {}
+            for condition, score in confidence_scores.items():
+                if score > 30:
+                    confidence_level = "low"
+                    if score > 70:
+                        confidence_level = "high"
+                    elif score > 50:
+                        confidence_level = "moderate"
+                        
+                    detected_conditions[condition] = confidence_level
+                    findings.append(f"Potential {condition} detected with {confidence_level} confidence ({score}%)")
+            
+            if not detected_conditions or confidence_scores["normal"] > 60:
                 findings.append("No significant abnormalities detected")
-                confidence_level = "low"
+                detected_conditions["normal"] = "high" if confidence_scores["normal"] > 80 else "moderate"
             
             # Get related research for context
-            research = self.get_medical_research("X-ray abnormalities diagnosis", limit=2)
+            research = self.get_medical_research("X-ray diagnosis " + " ".join(detected_conditions.keys()), limit=2)
             
-            # Prepare prompt for SAM-Med2D integration
+            # Prepare prompt for detailed analysis
             prompt = f"""You are Praxia, a medical AI assistant specialized in X-ray analysis. {self.identity}
 
 I have analyzed an X-ray image with the following findings:
-- {findings[0]}
-- Confidence level: {confidence_level} (abnormality probability: {abnormal_prob:.2f})
+- Detected conditions: {', '.join([f"{cond} ({level} confidence, {confidence_scores[cond]}%)" for cond, level in detected_conditions.items()])}
 
 Based on these findings, provide a detailed analysis in JSON format with these keys:
 1. "interpretation": Detailed interpretation of the X-ray findings
@@ -299,8 +364,8 @@ Your response must be valid JSON that can be parsed programmatically.
             # Extract JSON from response
             try:
                 # Find JSON content between triple backticks if present
-                if "json" in detailed_analysis_text and "" in detailed_analysis_text.split("json", 1)[1]:
-                    json_str = detailed_analysis_text.split("", 1)[1].split("", 1)[0].strip()
+                if "" in detailed_analysis_text and "" in detailed_analysis_text.split("", 1)[1]:
+                    json_str = detailed_analysis_text.split("json", 1)[1].split("```", 1)[0].strip()
                     detailed_analysis = json.loads(json_str)
                 else:
                     # Try to parse the entire response as JSON
@@ -310,7 +375,7 @@ Your response must be valid JSON that can be parsed programmatically.
                 logger.warning("Failed to parse JSON response for X-ray analysis")
                 detailed_analysis = {
                     "interpretation": detailed_analysis_text,
-                    "possible_conditions": ["Unable to parse conditions from response"],
+                    "possible_conditions": list(detected_conditions.keys()),
                     "recommendations": ["Consult with a radiologist for professional interpretation"],
                     "limitations": ["AI analysis should be confirmed by a healthcare professional"]
                 }
@@ -318,13 +383,19 @@ Your response must be valid JSON that can be parsed programmatically.
             result = {
                 "analysis": "X-ray analysis completed successfully",
                 "findings": findings,
-                "confidence": abnormal_prob,
+                "confidence_scores": confidence_scores,
+                "detected_conditions": detected_conditions,
                 "detailed_analysis": detailed_analysis,
                 "related_research": research,
                 "disclaimer": "This is an AI interpretation and should be confirmed by a radiologist."
             }
             
-            logger.info("X-ray analysis completed successfully", confidence=abnormal_prob)
+            # Cache the result
+            cache.set(cache_key, result, self.cache_timeout)
+            
+            logger.info("X-ray analysis completed successfully", 
+                        conditions=list(detected_conditions.keys()),
+                        confidence=confidence_scores)
             return result
         except Exception as e:
             logger.error("Error in X-ray analysis", error=str(e))
@@ -630,3 +701,228 @@ Your response must be valid JSON that can be parsed programmatically.
         except Exception as e:
             logger.error("Unexpected error in API call", error=str(e))
             raise Exception(f"Unexpected error: {str(e)}")
+    
+    @shared_task
+    def scrape_health_news(self, source='who', limit=3):
+        """
+        Scrape health news from WHO and other sources, then summarize with AI
+        
+        Args:
+            source (str): Source to scrape ('who', 'cdc', 'all')
+            limit (int): Maximum number of articles to return
+            
+        Returns:
+            list: News articles with summaries
+        """
+        # Generate cache key
+        cache_key = f"health_news_{source}_{limit}"
+        cached_result = cache.get(cache_key)
+        
+        if cached_result:
+            logger.info("Returning cached health news")
+            return cached_result
+        
+        try:
+            articles = []
+            
+            # Scrape WHO news
+            if source in ['who', 'all']:
+                who_articles = self._scrape_who_news(limit=limit if source == 'who' else max(1, limit // 2))
+                articles.extend(who_articles)
+            
+            # Scrape CDC news
+            if source in ['cdc', 'all']:
+                cdc_articles = self._scrape_cdc_news(limit=limit if source == 'cdc' else max(1, limit // 2))
+                articles.extend(cdc_articles)
+            
+            # Limit the total number of articles
+            articles = articles[:limit]
+            
+            # Summarize articles with AI
+            for article in articles:
+                if 'content' in article and article['content']:
+                    article['summary'] = self._summarize_article(article['content'])
+                else:
+                    article['summary'] = "No content available for summarization."
+            
+            # Cache the results
+            cache.set(cache_key, articles, 60 * 60 * 12)  # Cache for 12 hours
+            
+            logger.info("Health news scraped successfully", source=source, count=len(articles))
+            return articles
+            
+        except Exception as e:
+            logger.error("Error scraping health news", error=str(e), source=source)
+            return [
+                {
+                    "title": "Unable to retrieve health news at this time",
+                    "source": source,
+                    "url": "#",
+                    "summary": "Please try again later.",
+                    "published_date": datetime.now().strftime("%Y-%m-%d")
+                }
+            ]
+    
+    def _scrape_who_news(self, limit=3):
+        """Scrape news from WHO website"""
+        try:
+            url = "https://www.who.int/news"
+            response = requests.get(url, timeout=10)
+            response.raise_for_status()
+            
+            soup = BeautifulSoup(response.text, 'html.parser')
+            news_items = soup.select('.list-view--item')
+            
+            articles = []
+            for item in news_items[:limit]:
+                try:
+                    # Extract title and URL
+                    title_elem = item.select_one('.heading')
+                    title = title_elem.text.strip() if title_elem else "No title"
+                    
+                    link_elem = item.select_one('a')
+                    url = "https://www.who.int" + link_elem['href'] if link_elem and 'href' in link_elem.attrs else "#"
+                    
+                    # Extract date
+                    date_elem = item.select_one('.timestamp')
+                    published_date = date_elem.text.strip() if date_elem else None
+                    
+                    # Extract image
+                    img_elem = item.select_one('img')
+                    image_url = img_elem['src'] if img_elem and 'src' in img_elem.attrs else None
+                    
+                    # Get article content
+                    content = self._get_article_content(url)
+                    
+                    articles.append({
+                        "title": title,
+                        "source": "WHO",
+                        "url": url,
+                        "content": content,
+                        "image_url": image_url,
+                        "published_date": published_date
+                    })
+                except Exception as e:
+                    logger.warning(f"Error processing WHO news item: {str(e)}")
+                    continue
+            
+            return articles
+        except Exception as e:
+            logger.error(f"Error scraping WHO news: {str(e)}")
+            return []
+    
+    def _scrape_cdc_news(self, limit=3):
+        """Scrape news from CDC website"""
+        try:
+            url = "https://www.cdc.gov/media/index.html"
+            response = requests.get(url, timeout=10)
+            response.raise_for_status()
+            
+            soup = BeautifulSoup(response.text, 'html.parser')
+            news_items = soup.select('.feed-item')
+            
+            articles = []
+            for item in news_items[:limit]:
+                try:
+                    # Extract title and URL
+                    title_elem = item.select_one('a')
+                    title = title_elem.text.strip() if title_elem else "No title"
+                    
+                    url = "https://www.cdc.gov" + title_elem['href'] if title_elem and 'href' in title_elem.attrs else "#"
+                    
+                    # Extract date
+                    date_elem = item.select_one('.date')
+                    published_date = date_elem.text.strip() if date_elem else None
+                    
+                    # Get article content
+                    content = self._get_article_content(url)
+                    
+                    articles.append({
+                        "title": title,
+                        "source": "CDC",
+                        "url": url,
+                        "content": content,
+                        "image_url": None,
+                        "published_date": published_date
+                    })
+                except Exception as e:
+                    logger.warning(f"Error processing CDC news item: {str(e)}")
+                    continue
+            
+            return articles
+        except Exception as e:
+            logger.error(f"Error scraping CDC news: {str(e)}")
+            return []
+    
+    def _get_article_content(self, url):
+        """Get the content of an article from its URL"""
+        try:
+            response = requests.get(url, timeout=10)
+            response.raise_for_status()
+            
+            soup = BeautifulSoup(response.text, 'html.parser')
+            
+            # Try different content selectors (sites have different structures)
+            content_selectors = [
+                'article', '.content', '.main-content', 
+                '#content', '.article-body', '.story-body'
+            ]
+            
+            for selector in content_selectors:
+                content_elem = soup.select_one(selector)
+                if content_elem:
+                    # Remove script and style elements
+                    for script in content_elem.select('script, style'):
+                        script.extract()
+                    
+                    # Get text and clean it
+                    content = content_elem.get_text(separator=' ', strip=True)
+                    content = ' '.join(content.split())  # Normalize whitespace
+                    
+                    # Limit content length
+                    if len(content) > 5000:
+                        content = content[:5000] + "..."
+                    
+                    return content
+            
+            return "Content could not be extracted."
+        except Exception as e:
+            logger.warning(f"Error getting article content from {url}: {str(e)}")
+            return "Content could not be retrieved."
+    
+    def _summarize_article(self, content, max_length=200):
+        """
+        Summarize article content using distilbart
+        
+        Args:
+            content (str): Article content to summarize
+            max_length (int): Maximum length of summary
+            
+        Returns:
+            str: Summarized content
+        """
+        try:
+            # For longer articles, use AI summarization
+            if len(content) > 500:
+                # Use Together AI for summarization
+                prompt = f"""Summarize the following health news article in 3-4 sentences:
+
+{content[:4000]}
+
+Summary:"""
+                
+                summary = self._call_together_ai(prompt)
+                
+                # Clean up the summary
+                summary = summary.strip()
+                if len(summary) > max_length:
+                    summary = summary[:max_length] + "..."
+                
+                return summary
+            else:
+                # For short content, just return the first part
+                return content[:max_length] + ("..." if len(content) > max_length else "")
+                
+        except Exception as e:
+            logger.error(f"Error summarizing article: {str(e)}")
+            return content[:max_length] + "..."

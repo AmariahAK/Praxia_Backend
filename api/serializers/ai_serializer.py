@@ -4,7 +4,8 @@ from ..models import (
     ChatMessage, 
     MedicalConsultation, 
     XRayAnalysis, 
-    ResearchQuery
+    ResearchQuery,
+    HealthNews
 )
 
 class ChatMessageSerializer(serializers.ModelSerializer):
@@ -39,7 +40,7 @@ class MedicalConsultationSerializer(serializers.ModelSerializer):
     """Serializer for medical consultations"""
     class Meta:
         model = MedicalConsultation
-        fields = ('id', 'symptoms', 'diagnosis', 'created_at')
+        fields = ('id', 'symptoms', 'diagnosis', 'language', 'created_at')
         read_only_fields = ('diagnosis', 'created_at')
 
 class XRayAnalysisSerializer(serializers.ModelSerializer):
@@ -48,8 +49,9 @@ class XRayAnalysisSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = XRayAnalysis
-        fields = ('id', 'image', 'image_url', 'analysis_result', 'created_at')
-        read_only_fields = ('analysis_result', 'created_at')
+        fields = ('id', 'image', 'image_url', 'analysis_result', 'detected_conditions', 
+                  'confidence_scores', 'created_at')
+        read_only_fields = ('analysis_result', 'detected_conditions', 'confidence_scores', 'created_at')
         extra_kwargs = {
             'image': {'write_only': True}
         }
@@ -65,3 +67,11 @@ class ResearchQuerySerializer(serializers.ModelSerializer):
         model = ResearchQuery
         fields = ('id', 'query', 'results', 'created_at')
         read_only_fields = ('results', 'created_at')
+
+class HealthNewsSerializer(serializers.ModelSerializer):
+    """Serializer for health news"""
+    class Meta:
+        model = HealthNews
+        fields = ('id', 'title', 'source', 'url', 'summary', 'image_url', 
+                  'published_date', 'created_at')
+        read_only_fields = ('id', 'created_at')

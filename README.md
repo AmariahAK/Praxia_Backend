@@ -5,8 +5,10 @@ Praxia is an AI-powered healthcare assistant backend system developed by Amariah
 ## Features
 
 - **Symptom Analysis**: AI-powered diagnosis of medical symptoms with personalized recommendations
-- **X-ray Analysis**: Deep learning-based interpretation of X-ray images using MONAI models
+- **Multilingual Support**: Translation of symptoms and responses in English, Swahili, and Spanish
+- **X-ray Analysis**: Deep learning-based interpretation of X-ray images for pneumonia, fractures, and tumors
 - **Medical Research**: Integration with PubMed for retrieving relevant medical research
+- **Health News**: Automated scraping and summarization of health news from WHO and CDC
 - **Diet Analysis**: Nutritional assessment and personalized dietary recommendations
 - **User Profiles**: Personalized health profiles with medical history and preferences
 - **Chat System**: Persistent chat sessions with the AI assistant
@@ -21,7 +23,10 @@ Praxia is an AI-powered healthcare assistant backend system developed by Amariah
 - **Cache & Message Broker**: Redis
 - **Task Queue**: Celery
 - **AI Integration**: Together AI API
-- **Medical Imaging**: MONAI
+- **Medical Imaging**: MONAI with DenseNet121
+- **Translation**: LibreTranslate (self-hosted)
+- **Web Scraping**: BeautifulSoup4
+- **Text Summarization**: Transformers with distilbart
 - **Server**: Daphne (ASGI) with Nginx
 - **Containerization**: Docker & Docker Compose
 - **Monitoring**: Prometheus & Grafana
@@ -96,18 +101,28 @@ For local development without Docker:
 ### User Profile
 - `GET /api/profile/`: Get user profile
 - `PATCH /api/profile/`: Update user profile
+- `POST /api/profile/confirm-gender/`: Confirm and lock gender information
 
 ### Medical Consultations
 - `GET /api/consultations/`: List all consultations
 - `POST /api/consultations/`: Create a new consultation
+  - Supports multilingual input (English, Swahili, Spanish)
 
 ### X-ray Analysis
 - `GET /api/xray-analyses/`: List all X-ray analyses
 - `POST /api/xray-analyses/`: Upload and analyze an X-ray image
+  - Detects multiple conditions (pneumonia, fractures, tumors)
+  - Provides confidence scores for each detected condition
 
 ### Research Queries
 - `GET /api/research/`: List all research queries
 - `POST /api/research/`: Create a new research query
+
+### Health News
+- `GET /api/health-news/`: Get latest health news articles
+  - Query parameters:
+    - `source`: Filter by source (who, cdc, all)
+    - `limit`: Number of articles to return (default: 3, max: 10)
 
 ### Chat
 - `GET /api/chat-sessions/`: List all chat sessions
@@ -128,7 +143,6 @@ For local development without Docker:
 ### Production Deployment
 
 For production deployment:
-
 ```bash
 docker-compose -f docker-compose.prod.yml up -d
 ```
@@ -153,10 +167,11 @@ Key environment variables for configuration:
 | `DB_PASSWORD` | Database password | `postgres` |
 | `TOGETHER_AI_API_KEY` | Together AI API key | None |
 | `TOGETHER_AI_MODEL` | AI model to use | `Qwen/Qwen2.5-7B-Instruct` |
+| `LIBRETRANSLATE_URL` | LibreTranslate API URL | `http://libretranslate:5000` |
+| `HEALTH_NEWS_SOURCES` | News sources to scrape | `who,cdc` |
 | `GRAFANA_ADMIN_PASSWORD` | Grafana admin password | `admin_password` |
 
 ## Rate Limiting
-
 The API implements rate limiting to prevent abuse:
 
 | Endpoint Type | Authenticated Rate | Anonymous Rate |
@@ -165,6 +180,7 @@ The API implements rate limiting to prevent abuse:
 | Consultations | 10/minute | 3/minute |
 | X-ray Analysis | 5/hour | 3/minute |
 | Research | 20/hour | 3/minute |
+| Health News | 20/hour | 3/minute |
 
 ## Resilience Features
 
@@ -177,6 +193,7 @@ The system implements circuit breakers for external API calls to prevent cascadi
 | Mayo Clinic | 5 failures | 60 seconds |
 | Together AI | 3 failures | 30 seconds |
 | PubMed | 5 failures | 60 seconds |
+| LibreTranslate | 5 failures | 60 seconds |
 
 ### Caching
 Responses are cached to improve performance and reduce external API calls:
@@ -187,6 +204,9 @@ Responses are cached to improve performance and reduce external API calls:
 | Research | 24 hours |
 | WHO Guidelines | 24 hours |
 | Mayo Clinic Data | 24 hours |
+| Translations | 24 hours |
+| X-ray Analysis | 24 hours |
+| Health News | 12 hours |
 
 ## Monitoring
 
@@ -198,8 +218,24 @@ The system performs automatic health checks every 14 minutes to ensure all compo
 - Grafana dashboards are available at port 3000
 - Default Grafana login: admin / admin_password
 
-## Project Structure
+## Multilingual Support
+Praxia supports symptom analysis in multiple languages:
+- **English**: Default language
+- **Swahili**: Common medical terms and symptoms
+- **Spanish**: Common medical terms and symptoms
 
+The system automatically translates user input to English for processing and translates the AI response back to the original language.
+
+## X-ray Analysis Capabilities
+The enhanced X-ray analysis system can detect:
+- **Pneumonia**: Identification of lung inflammation patterns
+- **Fractures**: Detection of bone fractures in various body parts
+- **Tumors**: Identification of potential tumorous growths
+- **Normal**: Confirmation of no significant abnormalities
+
+Each analysis includes confidence scores and detailed recommendations.
+
+## Project Structure
 ```
 praxia_backend/
 ├── api/                    # Main application
@@ -210,9 +246,12 @@ praxia_backend/
 │   ├── urls/               # URL routing
 │   ├── consumers/          # WebSocket consumers
 │   ├── circuit_breaker.py  # Circuit breaker implementation
+│   ├── translation.py      # Translation service
 │   └── routing.py          # WebSocket routing
 ├── data/                   # Data files
 │   ├── ai_identity.txt     # AI identity information
+│   ├── medical_terms_sw.json  # Swahili medical terms
+│   ├── medical_terms_es.json  # Spanish medical terms
 │   └── models/             # AI model weights
 ├── media/                  # User-uploaded files
 ├── nginx/                  # Nginx configuration
@@ -222,15 +261,12 @@ praxia_backend/
 ```
 
 ## Contributing
-
 Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## License
-
 This project is proprietary and owned by Amariah Kamau.
 
 ## Contact
-
 - **Developer**: Amariah Kamau
 - **LinkedIn**: [https://www.linkedin.com/in/amariah-kamau-3156412a6/](https://www.linkedin.com/in/amariah-kamau-3156412a6/)
 - **GitHub**: [https://github.com/AmariahAK](https://github.com/AmariahAK)
