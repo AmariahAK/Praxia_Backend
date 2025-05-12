@@ -146,6 +146,7 @@ class LoginView(APIView):
         if serializer.is_valid():
             email = serializer.validated_data['email']
             password = serializer.validated_data['password']
+            token = serializer.validated_data.get('token', '')
             
             try:
                 user = User.objects.get(email=email)
@@ -159,16 +160,43 @@ class LoginView(APIView):
                     'email_verified': False
                 }, status=status.HTTP_401_UNAUTHORIZED)
             
+            # Authenticate with username and password
             user = authenticate(username=user.username, password=password)
-            if user:
-                token, created = Token.objects.get_or_create(user=user)
-                return Response({
-                    'token': token.key,
-                    'user_id': user.pk,
-                    'email': user.email,
-                    'email_verified': True
-                })
-            return Response({'error': 'Invalid credentials'}, status=status.HTTP_401_UNAUTHORIZED)
+            if not user:
+                return Response({'error': 'Invalid credentials'}, status=status.HTTP_401_UNAUTHORIZED)
+            
+            # Check if 2FA is enabled
+            try:
+                totp = UserTOTP.objects.get(user=user, is_verified=True)
+                
+                # If 2FA is enabled, verify token
+                if not token:
+                    return Response({
+                        'error': '2FA is enabled for this account. Please provide a verification code.',
+                        'requires_2fa': True
+                    }, status=status.HTTP_401_UNAUTHORIZED)
+                
+                # Verify TOTP token
+                if not totp.verify_token(token):
+                    return Response({
+                        'error': 'Invalid verification code.',
+                        'requires_2fa': True
+                    }, status=status.HTTP_401_UNAUTHORIZED)
+                
+            except UserTOTP.DoesNotExist:
+                # 2FA not enabled, continue with normal login
+                pass
+            
+            # Create or get token
+            token, created = Token.objects.get_or_create(user=user)
+            return Response({
+                'token': token.key,
+                'user_id': user.pk,
+                'email': user.email,
+                'email_verified': True,
+                'has_2fa': UserTOTP.objects.filter(user=user, is_verified=True).exists()
+            })
+            
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 class LogoutView(APIView):
@@ -287,4 +315,84 @@ class CheckEmailVerificationStatusView(APIView):
         except User.DoesNotExist:
             return Response({
                 'error': 'User with this email does not exist.'
+            }, status=status.HTTP_404_NOT_FOUND)
+
+import pyotp
+from ..models import UserTOTP
+from ..serializers import TOTPSetupSerializer, TOTPVerifySerializer
+
+class TOTPSetupView(APIView):
+    """View for setting up 2FA"""
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def get(self, request):
+        """Get or create TOTP setup for user"""
+        # Check if user already has TOTP setup
+        totp, created = UserTOTP.objects.get_or_create(
+            user=request.user,
+            defaults={'secret_key': pyotp.random_base32()}
+        )
+        
+        # If not created and already verified, return error
+        if not created and totp.is_verified:
+            return Response({
+                'error': '2FA is already set up for this account.'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # If not created but not verified, regenerate secret key
+        if not created and not totp.is_verified:
+            totp.secret_key = pyotp.random_base32()
+            totp.save()
+        
+        serializer = TOTPSetupSerializer(totp)
+        return Response(serializer.data)
+
+class TOTPVerifyView(APIView):
+    """View for verifying 2FA setup"""
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def post(self, request):
+        """Verify TOTP token and activate 2FA"""
+        serializer = TOTPVerifySerializer(data=request.data)
+        if serializer.is_valid():
+            token = serializer.validated_data['token']
+            
+            try:
+                totp = UserTOTP.objects.get(user=request.user)
+                
+                # Verify token
+                if totp.verify_token(token):
+                    totp.is_verified = True
+                    totp.save()
+                    return Response({
+                        'message': '2FA has been successfully set up.',
+                        'is_verified': True
+                    })
+                else:
+                    return Response({
+                        'error': 'Invalid verification code.'
+                    }, status=status.HTTP_400_BAD_REQUEST)
+                
+            except UserTOTP.DoesNotExist:
+                return Response({
+                    'error': 'TOTP setup not found. Please set up 2FA first.'
+                }, status=status.HTTP_404_NOT_FOUND)
+                
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+class TOTPDisableView(APIView):
+    """View for disabling 2FA"""
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def post(self, request):
+        """Disable 2FA for user"""
+        try:
+            totp = UserTOTP.objects.get(user=request.user)
+            totp.delete()
+            return Response({
+                'message': '2FA has been successfully disabled.'
+            })
+        except UserTOTP.DoesNotExist:
+            return Response({
+                'error': '2FA is not enabled for this account.'
             }, status=status.HTTP_404_NOT_FOUND)

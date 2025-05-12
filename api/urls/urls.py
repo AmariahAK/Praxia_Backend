@@ -17,7 +17,10 @@ from ..views import (
     XRayAnalysisView,
     ResearchQueryView,
     HealthCheckView,
-    HealthNewsView
+    HealthNewsView,
+    TOTPDisableView,
+    TOTPSetupView,
+    TOTPVerifyView,
 )
 
 # Create a router for ViewSets
@@ -39,6 +42,9 @@ urlpatterns = [
         path('password-reset-request/', PasswordResetRequestView.as_view(), name='password-reset-request'),
         path('password-reset-confirm/', PasswordResetConfirmView.as_view(), name='password-reset-confirm'),
         path('check-email-verification/', CheckEmailVerificationStatusView.as_view(), name='check-email-verification'),
+        path('2fa/setup/', TOTPSetupView.as_view(), name='2fa-setup'),
+        path('2fa/verify/', TOTPVerifyView.as_view(), name='2fa-verify'),
+        path('2fa/disable/', TOTPDisableView.as_view(), name='2fa-disable'),
     ])),
     
     # User profile URLs

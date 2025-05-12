@@ -42,3 +42,6 @@ pybreaker
 requests-futures
 locust
 websockets
+pyotp
+qrcode
+django-otp

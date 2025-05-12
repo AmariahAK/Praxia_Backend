@@ -5,6 +5,11 @@ from django.dispatch import receiver
 import uuid
 from datetime import timedelta
 from django.utils import timezone
+import pyotp
+import qrcode
+import base64
+import io
+from django.conf import settings
 
 class UserToken(models.Model):
     """Custom token model for user authentication"""
@@ -73,3 +78,45 @@ def create_user_email_status(sender, instance, created, **kwargs):
     """Create UserEmailStatus when a new User is created"""
     if created:
         UserEmailStatus.objects.create(user=instance)
+
+class UserTOTP(models.Model):
+    """TOTP-based two-factor authentication for users"""
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='totp')
+    secret_key = models.CharField(max_length=32, unique=True)
+    is_verified = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    def __str__(self):
+        return f"TOTP for {self.user.username}"
+    
+    def get_totp_uri(self):
+        """Generate the TOTP URI for QR code generation"""
+        issuer = settings.OTP_TOTP_ISSUER
+        return pyotp.totp.TOTP(self.secret_key).provisioning_uri(
+            name=self.user.email, 
+            issuer_name=issuer
+        )
+    
+    def get_qr_code(self):
+        """Generate QR code as base64 image"""
+        totp_uri = self.get_totp_uri()
+        qr = qrcode.QRCode(
+            version=1,
+            error_correction=qrcode.constants.ERROR_CORRECT_L,
+            box_size=10,
+            border=4,
+        )
+        qr.add_data(totp_uri)
+        qr.make(fit=True)
+        
+        img = qr.make_image(fill_color="black", back_color="white")
+        buffer = io.BytesIO()
+        img.save(buffer, format="PNG")
+        img_str = base64.b64encode(buffer.getvalue()).decode()
+        
+        return f"data:image/png;base64,{img_str}"
+    
+    def verify_token(self, token):
+        """Verify a TOTP token"""
+        totp = pyotp.TOTP(self.secret_key)
+        return totp.verify(token)

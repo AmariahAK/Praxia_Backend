@@ -55,6 +55,7 @@ class LoginSerializer(serializers.Serializer):
     """Serializer for user login"""
     email = serializers.EmailField(required=True)
     password = serializers.CharField(required=True)
+    token = serializers.CharField(required=False, allow_blank=True)  # TOTP token
 
 class EmailVerificationSerializer(serializers.Serializer):
     """Serializer for email verification"""
@@ -79,3 +80,29 @@ class PasswordResetConfirmSerializer(serializers.Serializer):
         if attrs['password'] != attrs['password2']:
             raise serializers.ValidationError({"password": "Password fields didn't match."})
         return attrs
+
+# Add to existing auth_serializer.py file
+import pyotp
+from ..models import UserTOTP
+
+class TOTPSetupSerializer(serializers.ModelSerializer):
+    """Serializer for setting up TOTP-based 2FA"""
+    qr_code = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = UserTOTP
+        fields = ('qr_code', 'created_at')
+        read_only_fields = ('qr_code', 'created_at')
+    
+    def get_qr_code(self, obj):
+        return obj.get_qr_code()
+
+class TOTPVerifySerializer(serializers.Serializer):
+    """Serializer for verifying TOTP token"""
+    token = serializers.CharField(max_length=6, min_length=6)
+
+class TOTPLoginSerializer(serializers.Serializer):
+    """Serializer for 2FA login"""
+    email = serializers.EmailField(required=True)
+    password = serializers.CharField(required=True)
+    token = serializers.CharField(max_length=6, min_length=6, required=False)

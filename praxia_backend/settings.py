@@ -36,6 +36,8 @@ INSTALLED_APPS = [
     'django_filters',
     'channels',
     'django_prometheus',
+    'django_otp',
+    'django_otp.plugins.otp_totp',
 ]
 
 MIDDLEWARE = [
@@ -46,6 +48,8 @@ MIDDLEWARE = [
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'django_otp.middleware.OTPMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'django_prometheus.middleware.PrometheusAfterMiddleware',
@@ -319,3 +323,6 @@ LIBRETRANSLATE_URL = config('LIBRETRANSLATE_URL', default='http://libretranslate
 # Health news settings
 HEALTH_NEWS_SOURCES = config('HEALTH_NEWS_SOURCES', default='who,cdc', cast=Csv())
 HEALTH_NEWS_CACHE_TIMEOUT = config('HEALTH_NEWS_CACHE_TIMEOUT', default=60*60*12, cast=int)  # 12 hours
+
+# 2FA settings
+OTP_TOTP_ISSUER = config('OTP_TOTP_ISSUER', default='Praxia Health')
