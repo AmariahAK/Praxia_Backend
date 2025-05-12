@@ -1,0 +1,39 @@
+{% extends "api/email_templates/base.html" %}
+
+{% block title %}Verify Your Praxia Account{% endblock %}
+
+{% block header %}Verify Your Account{% endblock %}
+
+{% block content %}
+<h1>Welcome to Praxia!</h1>
+
+<p>Hello {{ user.first_name }},</p>
+
+<p>Thank you for registering with Praxia, your AI-powered healthcare assistant. To complete your registration and access all features, please verify your email address by clicking the button below:</p>
+
+<div style="text-align: center;">
+    <a href="{{ site_url }}/auth/verify-email?token={{ verification_token }}" class="btn">Verify Email Address</a>
+</div>
+
+<div class="highlight">
+    <p>This verification link will expire in 24 hours. If you don't verify your email within this time, you'll need to request a new verification link.</p>
+</div>
+
+<p>With Praxia, you'll be able to:</p>
+<ul>
+    <li>Get AI-powered diagnosis of medical symptoms</li>
+    <li>Receive personalized health recommendations</li>
+    <li>Access multilingual support in English, Swahili, and Spanish</li>
+    <li>Analyze X-ray images for potential conditions</li>
+    <li>Get the latest health news and research</li>
+</ul>
+
+<div class="divider"></div>
+
+<p>If you're having trouble clicking the button, copy and paste the URL below into your web browser:</p>
+<p style="word-break: break-all;">{{ site_url }}/auth/verify-email?token={{ verification_token }}</p>
+
+<p>If you did not create an account, please disregard this email.</p>
+
+<p>Best regards,<br>The Praxia Team</p>
+{% endblock %}

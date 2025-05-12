@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from django.contrib.auth.models import User
 from django.contrib.auth.password_validation import validate_password
-from ..models import UserToken
+from ..models import UserToken, EmailVerificationToken, PasswordResetToken, UserEmailStatus
 
 class RegisterSerializer(serializers.ModelSerializer):
     """Serializer for user registration"""
@@ -42,7 +42,8 @@ class RegisterSerializer(serializers.ModelSerializer):
             username=username,
             email=email,
             first_name=first_name,
-            last_name=last_name
+            last_name=last_name,
+            is_active=False  # User starts as inactive until email is verified
         )
         
         user.set_password(validated_data['password'])
@@ -54,3 +55,27 @@ class LoginSerializer(serializers.Serializer):
     """Serializer for user login"""
     email = serializers.EmailField(required=True)
     password = serializers.CharField(required=True)
+
+class EmailVerificationSerializer(serializers.Serializer):
+    """Serializer for email verification"""
+    token = serializers.UUIDField(required=True)
+
+class PasswordResetRequestSerializer(serializers.Serializer):
+    """Serializer for password reset request"""
+    email = serializers.EmailField(required=True)
+    
+    def validate_email(self, value):
+        if not User.objects.filter(email=value).exists():
+            raise serializers.ValidationError("No user is registered with this email address.")
+        return value
+
+class PasswordResetConfirmSerializer(serializers.Serializer):
+    """Serializer for password reset confirmation"""
+    token = serializers.UUIDField(required=True)
+    password = serializers.CharField(write_only=True, required=True, validators=[validate_password])
+    password2 = serializers.CharField(write_only=True, required=True)
+    
+    def validate(self, attrs):
+        if attrs['password'] != attrs['password2']:
+            raise serializers.ValidationError({"password": "Password fields didn't match."})
+        return attrs

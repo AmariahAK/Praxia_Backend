@@ -4,6 +4,11 @@ from ..views import (
     RegisterView, 
     LoginView, 
     LogoutView,
+    EmailVerificationView,
+    ResendVerificationEmailView,
+    PasswordResetRequestView,
+    PasswordResetConfirmView,
+    CheckEmailVerificationStatusView,
     UserProfileView,
     ConfirmGenderView,
     ChatSessionViewSet,
@@ -29,6 +34,11 @@ urlpatterns = [
         path('register/', RegisterView.as_view(), name='register'),
         path('login/', LoginView.as_view(), name='login'),
         path('logout/', LogoutView.as_view(), name='logout'),
+        path('verify-email/', EmailVerificationView.as_view(), name='verify-email'),
+        path('resend-verification-email/', ResendVerificationEmailView.as_view(), name='resend-verification-email'),
+        path('password-reset-request/', PasswordResetRequestView.as_view(), name='password-reset-request'),
+        path('password-reset-confirm/', PasswordResetConfirmView.as_view(), name='password-reset-confirm'),
+        path('check-email-verification/', CheckEmailVerificationStatusView.as_view(), name='check-email-verification'),
     ])),
     
     # User profile URLs
