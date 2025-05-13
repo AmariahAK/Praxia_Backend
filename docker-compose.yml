@@ -26,6 +26,7 @@ services:
       - POSTGRES_DB=${DB_NAME}
       - POSTGRES_USER=${DB_USER}
       - POSTGRES_PASSWORD=${DB_PASSWORD}
+      - POSTGRES_HOST_AUTH_METHOD=trust
     ports:
       - "5432:5432"
     restart: always
@@ -71,6 +72,7 @@ services:
 
   monai:
     image: projectmonai/monai:latest
+    platform: linux/amd64
     ports:
       - "8888:8888"
     volumes:
@@ -108,6 +110,7 @@ services:
     image: grafana/grafana
     volumes:
       - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning
     env_file:
       - ./.env
     environment:

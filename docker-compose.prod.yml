@@ -94,6 +94,7 @@ services:
 
   monai:
     image: projectmonai/monai:latest
+    platform: linux/amd64
     ports:
       - "8888:8888"
     volumes:
@@ -131,6 +132,7 @@ services:
     image: grafana/grafana
     volumes:
       - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning
     env_file:
       - ./.env
     environment:
