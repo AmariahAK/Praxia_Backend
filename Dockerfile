@@ -9,6 +9,8 @@ ENV BASE_DIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends \
     netcat-traditional \
     gcc \
+    g++ \
+    build-essential \
     libc6-dev \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
