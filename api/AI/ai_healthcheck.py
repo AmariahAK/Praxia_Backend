@@ -121,14 +121,14 @@ class PraxiaAI:
         4. General advice for managing symptoms
         
         Format in JSON:
-        ```json
+        
         {
             "conditions": [],
             "next_steps": [],
             "urgent": [],
             "advice": []
         }
-        ```
+        
         """
         
         try:
@@ -234,14 +234,14 @@ class PraxiaAI:
         Diet: {diet_info}
         
         Provide a nutritional analysis in JSON:
-        ```json
+        
         {
             "balance": "",
             "deficiencies": [],
             "recommendations": [],
             "foods": {"add": [], "remove": []}
         }
-        ```
+        
         """
         
         try:
@@ -534,3 +534,24 @@ def websocket_health_check():
             "status": "error",
             "error": str(e)
         }
+
+class AIHealthCheck:
+    """Class for checking AI system health"""
+    
+    def __init__(self):
+        self.praxia_ai = PraxiaAI()
+    
+    def run_check(self):
+        """Run health check on AI system"""
+        try:
+            if not self.praxia_ai.together_api_key:
+                return False
+                
+            if settings.INITIALIZE_XRAY_MODEL:
+                if not hasattr(self.praxia_ai, 'densenet_model') or self.praxia_ai.densenet_model is None:
+                    return False
+            
+            return True
+        except Exception as e:
+            logger.error("AI health check failed", error=str(e))
+            return False

@@ -11,7 +11,6 @@ from io import BytesIO
 from django.conf import settings
 from bs4 import BeautifulSoup
 from django.core.cache import cache
-from monai.networks.nets import UNETR
 from monai.transforms import (
     Compose,
     LoadImage,
