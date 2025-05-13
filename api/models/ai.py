@@ -40,7 +40,7 @@ class MedicalConsultation(models.Model):
     diagnosis = models.TextField()
     language = models.CharField(max_length=20, default='en', choices=(
         ('en', 'English'),
-        ('sw', 'Swahili'),
+        ('fr', 'French'),
         ('es', 'Spanish'),
     ))
     created_at = models.DateTimeField(auto_now_add=True, db_index=True)

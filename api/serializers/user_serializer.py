@@ -10,7 +10,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = UserProfile
         fields = ('username', 'email', 'profile_picture', 'age', 'gender', 'gender_locked', 
-                  'weight', 'height', 'country', 'allergies', 'created_at', 'updated_at')
+                  'weight', 'height', 'country', 'allergies', 'preferred_language', 'created_at', 'updated_at')
         read_only_fields = ('created_at', 'updated_at', 'gender_locked')
 
 class UserProfileUpdateSerializer(serializers.ModelSerializer):
@@ -18,7 +18,7 @@ class UserProfileUpdateSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = UserProfile
-        fields = ('profile_picture', 'age', 'gender', 'weight', 'height', 'country', 'allergies')
+        fields = ('profile_picture', 'age', 'gender', 'weight', 'height', 'country', 'allergies', 'preferred_language')
     
     def validate_gender(self, value):
         """Validate that gender cannot be changed once set and locked"""

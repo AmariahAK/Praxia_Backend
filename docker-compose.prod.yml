@@ -134,9 +134,10 @@ services:
     ports:
       - "5001:5000"
     environment:
-      - LT_LOAD_ONLY=es,sw,en
+      - LT_LOAD_ONLY=es,en,fr
       - LT_THREADS=4
       - LT_MEMORY=100M
+      - LT_UPDATE_MODELS=false
     restart: always
 
   node-exporter:

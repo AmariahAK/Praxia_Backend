@@ -12,6 +12,12 @@ class UserProfile(models.Model):
         ('prefer_not_to_say', 'Prefer not to say'),
     )
     
+    LANGUAGE_CHOICES = (
+        ('en', 'English'),
+        ('es', 'Spanish'),
+        ('fr', 'French'),
+    )
+    
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='profile')
     profile_picture = models.ImageField(upload_to='profile_pics/', null=True, blank=True)
     age = models.PositiveIntegerField(null=True, blank=True)
@@ -21,6 +27,7 @@ class UserProfile(models.Model):
     height = models.FloatField(null=True, blank=True, help_text="Height in centimeters")
     country = models.CharField(max_length=100, blank=True)
     allergies = models.TextField(blank=True, help_text="List any allergies separated by commas")
+    preferred_language = models.CharField(max_length=2, choices=LANGUAGE_CHOICES, default='en')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     
