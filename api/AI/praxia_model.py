@@ -56,30 +56,10 @@ class PraxiaAI:
     def _initialize_xray_model(self):
         """Initialize the MONAI model for X-ray analysis"""
         try:
-            # Initialize UNETR model for X-ray analysis with expanded conditions
-            self.xray_model = UNETR(
-                in_channels=1,
-                out_channels=4,  # Multiple classification (normal, pneumonia, fracture, tumor)
-                img_size=(224, 224),
-                feature_size=16,
-                hidden_size=768,
-                mlp_dim=3072,
-                num_heads=12,
-                num_layers=12,
-                norm_name='instance',
-                dropout_rate=0.0,
-            ).to(self.device)
+            # Skip UNETR initialization and only use DenseNet121
+            self.xray_model = None
             
-            # Load pre-trained weights if available
-            model_path = os.path.join(settings.BASE_DIR, 'data', 'models', 'xray_model.pth')
-            if os.path.exists(model_path):
-                self.xray_model.load_state_dict(torch.load(model_path, map_location=self.device))
-                self.xray_model.eval()
-                logger.info("X-ray model loaded successfully")
-            else:
-                logger.warning("X-ray model weights not found")
-                
-            # Initialize DenseNet121 for additional classification
+            # Initialize DenseNet121 for classification
             try:
                 from monai.networks.nets import DenseNet121
                 self.densenet_model = DenseNet121(
@@ -93,13 +73,15 @@ class PraxiaAI:
                     self.densenet_model.load_state_dict(torch.load(densenet_path, map_location=self.device))
                     self.densenet_model.eval()
                     logger.info("DenseNet model loaded successfully")
+                else:
+                    logger.warning("DenseNet model weights not found")
             except Exception as e:
                 logger.error("Error initializing DenseNet model", error=str(e))
                 self.densenet_model = None
                 
         except Exception as e:
             logger.error("Error initializing X-ray model", error=str(e))
-            self.xray_model = None
+            self.densenet_model = None
     
     def _build_user_context(self, user_profile):
         """Build context string from user profile data"""
@@ -239,18 +221,18 @@ Your response must be valid JSON that can be parsed programmatically.
     @shared_task
     def analyze_xray(self, image_data):
         """
-        Analyze X-ray images using MONAI models with expanded condition detection
+        Analyze X-ray images using DenseNet121 model
         
         Args:
             image_data: The X-ray image data (file path or bytes)
             
         Returns:
-            dict: Analysis results with multiple condition detection
+            dict: Analysis results with condition detection
         """
-        if not self.xray_model:
-            logger.warning("X-ray model not initialized")
+        if not hasattr(self, 'densenet_model') or self.densenet_model is None:
+            logger.warning("DenseNet model not initialized")
             return {
-                "error": "X-ray model not initialized",
+                "error": "X-ray analysis model not initialized",
                 "message": "The X-ray analysis model is not available."
             }
         
@@ -284,35 +266,19 @@ Your response must be valid JSON that can be parsed programmatically.
             # Add batch dimension
             image = image.unsqueeze(0).to(self.device)
             
-            # Run inference with UNETR model
+            # Run inference with DenseNet model
             with torch.no_grad():
-                output = self.xray_model(image)
-                probabilities = torch.softmax(output, dim=1)
+                densenet_output = self.densenet_model(image)
+                densenet_probs = torch.softmax(densenet_output, dim=1)
                 
-                # Get probabilities for each condition
-                normal_prob = probabilities[0, 0].item()
-                pneumonia_prob = probabilities[0, 1].item()
-                fracture_prob = probabilities[0, 2].item()
-                tumor_prob = probabilities[0, 3].item()
-            
-            # Run inference with DenseNet model if available for additional validation
-            densenet_results = {}
-            if hasattr(self, 'densenet_model') and self.densenet_model:
-                with torch.no_grad():
-                    densenet_output = self.densenet_model(image)
-                    densenet_probs = torch.softmax(densenet_output, dim=1)
-                    
-                    # Get probabilities from DenseNet
-                    densenet_results = {
-                        "fracture": densenet_probs[0, 0].item(),
-                        "tumor": densenet_probs[0, 1].item(),
-                        "pneumonia": densenet_probs[0, 2].item()
-                    }
-                    
-                    # Average the probabilities for more robust results
-                    fracture_prob = (fracture_prob + densenet_results["fracture"]) / 2
-                    tumor_prob = (tumor_prob + densenet_results["tumor"]) / 2
-                    pneumonia_prob = (pneumonia_prob + densenet_results["pneumonia"]) / 2
+                # Get probabilities from DenseNet
+                fracture_prob = densenet_probs[0, 0].item()
+                tumor_prob = densenet_probs[0, 1].item()
+                pneumonia_prob = densenet_probs[0, 2].item()
+                
+                # Calculate normal probability (inverse of the sum of other probabilities)
+                # Capped at 1.0 to ensure it's a valid probability
+                normal_prob = max(0, min(1.0, 1.0 - (fracture_prob + tumor_prob + pneumonia_prob)))
             
             # Determine findings based on probabilities
             findings = []

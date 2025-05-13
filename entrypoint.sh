@@ -7,6 +7,16 @@ while ! nc -z $DB_HOST $DB_PORT; do
 done
 echo "PostgreSQL started"
 
+# Download model weights if they don't exist
+echo "Checking for DenseNet121 model weights..."
+if [ ! -f "/app/data/models/densenet_xray.pth" ]; then
+  echo "Downloading DenseNet121 model weights..."
+  python -m api.utils.download_model
+  echo "Model weights downloaded successfully!"
+else
+  echo "Model weights already exist, skipping download."
+fi
+
 # Apply database migrations
 echo "Applying database migrations..."
 python manage.py migrate

@@ -45,3 +45,4 @@ websockets
 pyotp
 qrcode
 django-otp
+torchxrayvision
