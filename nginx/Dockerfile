@@ -23,6 +23,10 @@ RUN openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
 RUN echo "<html><body><h1>404 - Page Not Found</h1><p>The page you requested could not be found.</p></body></html>" > /usr/share/nginx/html/404.html
 RUN echo "<html><body><h1>500 - Server Error</h1><p>The server encountered an error and could not complete your request.</p></body></html>" > /usr/share/nginx/html/50x.html
 
+# Create directories for static and media files
+RUN mkdir -p /app/staticfiles
+RUN mkdir -p /app/media
+
 # Expose ports
 EXPOSE 80 443
 

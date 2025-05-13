@@ -33,10 +33,12 @@ RUN mkdir -p /app/media/profile_pics
 RUN mkdir -p /app/media/xrays
 RUN mkdir -p /app/data/models
 RUN mkdir -p /app/staticfiles
+RUN mkdir -p /app/prometheus
 
 # Set permissions
 RUN chmod -R 755 /app/media
 RUN chmod -R 755 /app/staticfiles
 RUN chmod -R 755 /app/data
+RUN chmod -R 755 /app/prometheus
 
 ENTRYPOINT ["/app/entrypoint.sh"]

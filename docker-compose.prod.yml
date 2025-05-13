@@ -9,30 +9,33 @@ services:
     env_file:
       - ./.env
     environment:
-      - DB_HOST=db
-      - DB_PORT=5432
       - DEBUG=False
-      - DJANGO_SUPERUSER_USERNAME=${DJANGO_SUPERUSER_USERNAME}
-      - DJANGO_SUPERUSER_EMAIL=${DJANGO_SUPERUSER_EMAIL}
-      - DJANGO_SUPERUSER_PASSWORD=${DJANGO_SUPERUSER_PASSWORD}
     depends_on:
       - db
       - redis
     restart: always
+    networks:
+      - praxia-network
 
   db:
     image: postgres:14
     volumes:
       - postgres_data:/var/lib/postgresql/data/
+    env_file:
+      - ./.env
     environment:
       - POSTGRES_DB=${DB_NAME}
       - POSTGRES_USER=${DB_USER}
       - POSTGRES_PASSWORD=${DB_PASSWORD}
     restart: always
+    networks:
+      - praxia-network
 
   redis:
     image: redis:7
     restart: always
+    networks:
+      - praxia-network
 
   celery:
     build: .
@@ -42,13 +45,13 @@ services:
     env_file:
       - ./.env
     environment:
-      - DB_HOST=db
-      - DB_PORT=5432
       - DEBUG=False
     depends_on:
       - web
       - redis
     restart: always
+    networks:
+      - praxia-network
 
   celery-beat:
     build: .
@@ -56,13 +59,13 @@ services:
     env_file:
       - ./.env
     environment:
-      - DB_HOST=db
-      - DB_PORT=5432
       - DEBUG=False
     depends_on:
       - web
       - redis
     restart: always
+    networks:
+      - praxia-network
 
   nginx:
     build: ./nginx
@@ -77,6 +80,8 @@ services:
     depends_on:
       - web
     restart: always
+    networks:
+      - praxia-network
 
   certbot:
     image: certbot/certbot
@@ -84,6 +89,8 @@ services:
       - ./nginx/certbot/conf:/etc/letsencrypt
       - ./nginx/certbot/www:/var/www/certbot
     entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait ${!}; done;'"
+    networks:
+      - praxia-network
 
   monai:
     image: projectmonai/monai:latest
@@ -91,6 +98,8 @@ services:
       - "8888:8888"
     volumes:
       - ./data/models:/models
+    networks:
+      - praxia-network
 
   sam:
     image: sam-med2d:latest
@@ -99,6 +108,8 @@ services:
       dockerfile: Dockerfile.sam
     volumes:
       - ./data/models:/models
+    networks:
+      - praxia-network
 
   prometheus:
     image: prom/prometheus
@@ -113,11 +124,15 @@ services:
     ports:
       - "9090:9090"
     restart: always
+    networks:
+      - praxia-network
 
   grafana:
     image: grafana/grafana
     volumes:
       - grafana_data:/var/lib/grafana
+    env_file:
+      - ./.env
     environment:
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin_password}
       - GF_USERS_ALLOW_SIGN_UP=false
@@ -128,17 +143,23 @@ services:
     depends_on:
       - prometheus
     restart: always
+    networks:
+      - praxia-network
 
   libretranslate:
     image: libretranslate/libretranslate
     ports:
       - "5001:5000"
+    env_file:
+      - ./.env
     environment:
-      - LT_LOAD_ONLY=es,en,fr
-      - LT_THREADS=4
-      - LT_MEMORY=100M
-      - LT_UPDATE_MODELS=false
+      - LT_LOAD_ONLY=${LT_LOAD_ONLY:-es,en,fr}
+      - LT_THREADS=${LT_THREADS:-4}
+      - LT_MEMORY=${LT_MEMORY:-100M}
+      - LT_UPDATE_MODELS=${LT_UPDATE_MODELS:-false}
     restart: always
+    networks:
+      - praxia-network
 
   node-exporter:
     image: prom/node-exporter
@@ -151,6 +172,8 @@ services:
       - '--path.sysfs=/host/sys'
       - '--collector.filesystem.ignored-mount-points=^/(sys|proc|dev|host|etc)($|/)'
     restart: always
+    networks:
+      - praxia-network
 
   cadvisor:
     image: gcr.io/cadvisor/cadvisor
@@ -161,18 +184,32 @@ services:
       - /var/lib/docker/:/var/lib/docker:ro
       - /dev/disk/:/dev/disk:ro
     restart: always
+    networks:
+      - praxia-network
 
   redis-exporter:
     image: oliver006/redis_exporter
+    env_file:
+      - ./.env
     environment:
-      - REDIS_ADDR=redis://redis:6379
+      - REDIS_ADDR=redis://${REDIS_HOST:-redis}:${REDIS_PORT:-6379}
     restart: always
+    networks:
+      - praxia-network
 
   postgres-exporter:
     image: wrouesnel/postgres_exporter
+    env_file:
+      - ./.env
     environment:
-      - DATA_SOURCE_NAME=postgresql://${DB_USER}:${DB_PASSWORD}@db:5432/${DB_NAME}?sslmode=disable
+      - DATA_SOURCE_NAME=postgresql://${DB_USER}:${DB_PASSWORD}@${DB_HOST:-db}:${DB_PORT:-5432}/${DB_NAME}?sslmode=disable
     restart: always
+    networks:
+      - praxia-network
+
+networks:
+  praxia-network:
+    driver: bridge
 
 volumes:
   postgres_data:

@@ -1,11 +1,23 @@
 #!/bin/bash
 
+# Set default values if environment variables are not set
+DB_HOST=${DB_HOST:-db}
+DB_PORT=${DB_PORT:-5432}
+
 # Wait for database to be ready
-echo "Waiting for PostgreSQL..."
-while ! nc -z $DB_HOST $DB_PORT; do
-  sleep 0.1
+echo "Waiting for PostgreSQL at $DB_HOST:$DB_PORT..."
+for i in {1..30}; do
+  if nc -z $DB_HOST $DB_PORT; then
+    echo "PostgreSQL started"
+    break
+  fi
+  echo "Attempt $i: PostgreSQL not ready yet, waiting..."
+  sleep 2
+  if [ $i -eq 30 ]; then
+    echo "Error: Could not connect to PostgreSQL after 30 attempts. Exiting."
+    exit 1
+  fi
 done
-echo "PostgreSQL started"
 
 # Download model weights if they don't exist
 echo "Checking for DenseNet121 model weights..."
