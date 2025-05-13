@@ -13,7 +13,7 @@ from django.conf import settings
 
 class UserToken(models.Model):
     """Custom token model for user authentication"""
-    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='auth_token')
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='custom_auth_token')
     token = models.CharField(max_length=255, unique=True)
     created_at = models.DateTimeField(auto_now_add=True)
     last_used = models.DateTimeField(auto_now=True)
