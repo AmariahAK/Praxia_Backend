@@ -183,7 +183,7 @@ praxia_backend/
 │   └── routing.py          # WebSocket routing
 ├── data/                   # Data files
 │   ├── ai_identity.txt     # AI identity information
-│   ├── medical_terms_sw.json  # French medical terms
+│   ├── medical_terms_fr.json  # French medical terms
 │   ├── medical_terms_es.json  # Spanish medical terms
 │   └── models/             # AI model weights
 ├── media/                  # User-uploaded files
