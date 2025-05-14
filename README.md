@@ -5,7 +5,7 @@ Praxia is an AI-powered healthcare assistant backend system developed by Amariah
 ## Features
 
 - **Symptom Analysis**: AI-powered diagnosis of medical symptoms with personalized recommendations
-- **Multilingual Support**: Translation of symptoms and responses in English, Swahili, and Spanish
+- **Multilingual Support**: Translation of symptoms and responses in English, French, and Spanish
 - **X-ray Analysis**: Deep learning-based interpretation of X-ray images for pneumonia, fractures, and tumors
 - **Medical Research**: Integration with PubMed for retrieving relevant medical research
 - **Health News**: Automated scraping and summarization of health news from WHO and CDC
@@ -68,7 +68,7 @@ For detailed setup instructions, please refer to our [Setup Guide](guide/Setup.m
 ### Medical Consultations
 - `GET /api/consultations/`: List all consultations
 - `POST /api/consultations/`: Create a new consultation
-  - Supports multilingual input (English, Swahili, Spanish)
+  - Supports multilingual input (English, French, Spanish)
 
 ### X-ray Analysis
 - `GET /api/xray-analyses/`: List all X-ray analyses
@@ -154,7 +154,7 @@ The system performs automatic health checks every 14 minutes to ensure all compo
 ## Multilingual Support
 Praxia supports symptom analysis in multiple languages:
 - **English**: Default language
-- **Swahili**: Common medical terms and symptoms
+- **French**: Common medical terms and symptoms
 - **Spanish**: Common medical terms and symptoms
 
 The system automatically translates user input to English for processing and translates the AI response back to the original language.
@@ -183,7 +183,7 @@ praxia_backend/
 │   └── routing.py          # WebSocket routing
 ├── data/                   # Data files
 │   ├── ai_identity.txt     # AI identity information
-│   ├── medical_terms_sw.json  # Swahili medical terms
+│   ├── medical_terms_sw.json  # French medical terms
 │   ├── medical_terms_es.json  # Spanish medical terms
 │   └── models/             # AI model weights
 ├── media/                  # User-uploaded files
