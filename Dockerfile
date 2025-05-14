@@ -29,6 +29,8 @@ COPY . .
 # Make entrypoint scripts executable
 RUN chmod +x /app/entrypoint.sh
 RUN chmod +x /app/entrypoint.prod.sh
+RUN chmod +x /app/docker-entrypoint-wrapper.sh
+RUN chmod +x /app/init-db.sh
 
 # Create necessary directories
 RUN mkdir -p /app/media/profile_pics

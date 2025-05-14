@@ -15,10 +15,12 @@ create_db_if_not_exists() {
 }
 
 # Create main database
-create_db_if_not_exists "praxia_db"
+create_db_if_not_exists "$DB_NAME"
 
-# Create shard databases
-create_db_if_not_exists "praxia_shard1"
-create_db_if_not_exists "praxia_shard2"
+# Create shard databases if sharding is enabled
+if [ "$USE_SHARDING" = "True" ]; then
+    create_db_if_not_exists "$SHARD1_DB_NAME"
+    create_db_if_not_exists "$SHARD2_DB_NAME"
+fi
 
 echo "All databases initialized successfully!"

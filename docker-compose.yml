@@ -28,9 +28,9 @@ services:
     env_file:
       - ./.env
     environment:
-      - POSTGRES_DB=postgres
-      - POSTGRES_USER=${DB_USER}
       - POSTGRES_PASSWORD=${DB_PASSWORD}
+      - POSTGRES_USER=${DB_USER}
+      - POSTGRES_DB=${DB_NAME}
     ports:
       - "5432:5432"
     restart: always
@@ -59,7 +59,7 @@ services:
     env_file:
       - ./.env
     depends_on:
-      - web
+      - db
       - redis
     restart: always
     networks:
@@ -73,7 +73,7 @@ services:
     env_file:
       - ./.env
     depends_on:
-      - web
+      - db
       - redis
     restart: always
     networks:
@@ -196,6 +196,8 @@ services:
       - ./.env
     environment:
       - DATA_SOURCE_NAME=postgresql://${DB_USER}:${DB_PASSWORD}@db:${DB_PORT:-5432}/${DB_NAME}?sslmode=disable
+    depends_on:
+      - db
     restart: always
     networks:
       - praxia-network

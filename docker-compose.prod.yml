@@ -191,9 +191,9 @@ services:
   postgres-exporter:
     image: wrouesnel/postgres_exporter
     env_file:
-      - ./.env
+      - ./.env.prod
     environment:
-      - DATA_SOURCE_NAME=postgresql://${DB_USER}:${DB_PASSWORD}@db:${DB_PORT:-5432}/${DB_NAME}?sslmode=disable
+      - DATA_SOURCE_NAME=postgresql://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT:-5432}/${DB_NAME}?sslmode=disable
     restart: always
     networks:
       - praxia-network
