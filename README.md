@@ -34,12 +34,9 @@ Praxia is an AI-powered healthcare assistant backend system developed by Amariah
 
 ## Getting Started
 
-### Prerequisites
+For detailed setup instructions, please refer to our [Setup Guide](Setup.md).
 
-- Docker and Docker Compose
-- Together AI API key (for AI functionality)
-
-### Installation
+### Quick Start
 
 1. Clone the repository:
    ```bash
@@ -47,49 +44,14 @@ Praxia is an AI-powered healthcare assistant backend system developed by Amariah
    cd Praxia_Backend
    ```
 
-2. Create a `.env` file based on the provided example:
-   ```bash
-   cp .env.example .env
-   ```
+2. Create a `.env` file based on the example in the [Setup Guide](Setup.md).
 
-3. Update the `.env` file with your Together AI API key and other settings.
-
-4. Build and start the containers:
+3. Build and start the containers:
    ```bash
    docker-compose up -d
    ```
 
-5. The API will be available at `http://localhost:8000/api/`
-
-### Development Setup
-
-For local development without Docker:
-
-1. Create a virtual environment:
-   ```bash
-   python -m venv venv
-   source venv/bin/activate  # On Windows: venv\Scripts\activate
-   ```
-
-2. Install dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-3. Set up the database:
-   ```bash
-   python manage.py migrate
-   ```
-
-4. Create a superuser:
-   ```bash
-   python manage.py createsuperuser
-   ```
-
-5. Run the development server:
-   ```bash
-   python manage.py runserver
-   ```
+4. The API will be available at `http://localhost:8000/api/`
 
 ## API Endpoints
 
@@ -140,36 +102,7 @@ For local development without Docker:
 
 ## Deployment
 
-### Production Deployment
-
-For production deployment:
-```bash
-docker-compose -f docker-compose.prod.yml up -d
-```
-
-This will start the application with production settings, including:
-- Nginx with SSL support
-- Optimized server configurations
-- Reduced debug information
-- Prometheus and Grafana for monitoring
-
-### Environment Variables
-
-Key environment variables for configuration:
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `SECRET_KEY` | Django secret key | Generated |
-| `DEBUG` | Debug mode | `True` in dev, `False` in prod |
-| `ALLOWED_HOSTS` | Allowed hostnames | `localhost,127.0.0.1` |
-| `DB_NAME` | Database name | `praxia_db` |
-| `DB_USER` | Database user | `postgres` |
-| `DB_PASSWORD` | Database password | `postgres` |
-| `TOGETHER_AI_API_KEY` | Together AI API key | None |
-| `TOGETHER_AI_MODEL` | AI model to use | `Qwen/Qwen2.5-7B-Instruct` |
-| `LIBRETRANSLATE_URL` | LibreTranslate API URL | `http://libretranslate:5000` |
-| `HEALTH_NEWS_SOURCES` | News sources to scrape | `who,cdc` |
-| `GRAFANA_ADMIN_PASSWORD` | Grafana admin password | `admin_password` |
+For detailed deployment instructions, please refer to our [Setup Guide](Setup.md).
 
 ## Rate Limiting
 The API implements rate limiting to prevent abuse:
