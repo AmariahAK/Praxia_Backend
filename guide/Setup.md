@@ -399,4 +399,3 @@ The system includes a health check endpoint at `/api/health/` that provides stat
 ---
 
 [← Back to Main README](../README.md)
-```
