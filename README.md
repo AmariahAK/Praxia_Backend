@@ -34,7 +34,7 @@ Praxia is an AI-powered healthcare assistant backend system developed by Amariah
 
 ## Getting Started
 
-For detailed setup instructions, please refer to our [Setup Guide](Setup.md).
+For detailed setup instructions, please refer to our [Setup Guide](guide/Setup.md).
 
 ### Quick Start
 
@@ -44,7 +44,7 @@ For detailed setup instructions, please refer to our [Setup Guide](Setup.md).
    cd Praxia_Backend
    ```
 
-2. Create a `.env` file based on the example in the [Setup Guide](Setup.md).
+2. Create a `.env` file based on the example in the [Setup Guide](guide/Setup.md).
 
 3. Build and start the containers:
    ```bash
@@ -102,7 +102,7 @@ For detailed setup instructions, please refer to our [Setup Guide](Setup.md).
 
 ## Deployment
 
-For detailed deployment instructions, please refer to our [Setup Guide](Setup.md).
+For detailed deployment instructions, please refer to our [Setup Guide](guide/Setup.md).
 
 ## Rate Limiting
 The API implements rate limiting to prevent abuse:
