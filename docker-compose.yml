@@ -129,7 +129,7 @@ services:
     ports:
       - "5001:5000"
     environment:
-      - LT_LOAD_ONLY=es,en, fr
+      - LT_LOAD_ONLY=es,en,fr
       - LT_THREADS=4
       - LT_MEMORY=100M
       - LT_UPDATE_MODELS=false
@@ -178,7 +178,7 @@ services:
     env_file:
       - ./.env
     environment:
-      - DATA_SOURCE_NAME=postgresql://${DB_USER}:${DB_PASSWORD}@${DB_HOST:-db}:${DB_PORT:-5432}/${DB_NAME}?sslmode=disable
+      - DATA_SOURCE_NAME=postgresql://${DB_USER}:${DB_PASSWORD}@db:${DB_PORT:-5432}/${DB_NAME}?sslmode=disable
     restart: always
     networks:
       - praxia-network
