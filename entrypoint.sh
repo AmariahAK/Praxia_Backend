@@ -3,11 +3,13 @@
 # Set default values if environment variables are not set
 DB_HOST=${DB_HOST:-db}
 DB_PORT=${DB_PORT:-5432}
+DB_NAME=${DB_NAME:-praxia_db}
+DB_USER=${DB_USER:-amariah}
 
 # Wait for database to be ready
 echo "Waiting for PostgreSQL at $DB_HOST:$DB_PORT..."
 for i in {1..30}; do
-  if nc -z $DB_HOST $DB_PORT; then
+  if pg_isready -h $DB_HOST -p $DB_PORT -U $DB_USER; then
     echo "PostgreSQL started"
     break
   fi
@@ -18,6 +20,16 @@ for i in {1..30}; do
     exit 1
   fi
 done
+
+# Verify database exists
+echo "Verifying database $DB_NAME exists..."
+if ! PGPASSWORD=$DB_PASSWORD psql -h $DB_HOST -p $DB_PORT -U $DB_USER -lqt | cut -d \| -f 1 | grep -qw $DB_NAME; then
+  echo "Database $DB_NAME does not exist. Creating..."
+  PGPASSWORD=$DB_PASSWORD psql -h $DB_HOST -p $DB_PORT -U $DB_USER -c "CREATE DATABASE $DB_NAME;"
+  echo "Database $DB_NAME created successfully!"
+else
+  echo "Database $DB_NAME exists, continuing..."
+fi
 
 # Download model weights if they don't exist
 echo "Checking for DenseNet121 model weights..."

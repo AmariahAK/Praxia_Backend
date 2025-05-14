@@ -1,44 +1,69 @@
-cadvisor-1           | I0514 11:22:21.410516       1 manager.go:233] Version: {KernelVersion:6.10.14-linuxkit ContainerOsVersion:Alpine Linux v3.18 DockerVersion: DockerAPIVersion: CadvisorVersion:v0.49.1 CadvisorRevision:6f3f25ba}
-cadvisor-1           | I0514 11:22:21.424026       1 factory.go:219] Registration of the crio container factory failed: Get "http://%2Fvar%2Frun%2Fcrio%2Fcrio.sock/info": dial unix /var/run/crio/crio.sock: connect: no such file or directory
-cadvisor-1           | I0514 11:22:21.426598       1 factory.go:219] Registration of the mesos container factory failed: unable to create mesos agent client: failed to get version
-cadvisor-1           | I0514 11:22:21.426866       1 factory.go:219] Registration of the docker container factory failed: failed to validate Docker info: failed to detect Docker info: Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?
-cadvisor-1           | I0514 11:22:21.427430       1 factory.go:219] Registration of the podman container factory failed: failed to validate Podman info: response not present: Get "http://d/v1.0.0/info": dial unix /var/run/podman/podman.sock: connect: no such file or directory
-cadvisor-1           | I0514 11:22:21.428751       1 factory.go:219] Registration of the containerd container factory failed: unable to create containerd client: containerd: cannot unix dial containerd api service: dial unix /run/containerd/containerd.sock: connect: no such file or directory
-cadvisor-1           | I0514 11:22:21.428818       1 factory.go:55] Registering systemd factory
-cadvisor-1           | I0514 11:22:21.428824       1 factory.go:221] Registration of the systemd container factory successfully
-cadvisor-1           | I0514 11:22:21.428872       1 factory.go:103] Registering Raw factory
-cadvisor-1           | I0514 11:22:21.428888       1 manager.go:1196] Started watching for new ooms in manager
-cadvisor-1           | W0514 11:22:21.428920       1 manager.go:306] Could not configure a source for OOM detection, disabling OOM events: open /dev/kmsg: no such file or directory
-cadvisor-1           | I0514 11:22:21.429192       1 manager.go:319] Starting recovery of all containers
-cadvisor-1           | I0514 11:22:21.450531       1 manager.go:324] Recovery completed
-cadvisor-1           | I0514 11:22:21.453397       1 cadvisor.go:176] Starting cAdvisor version: v0.49.1-6f3f25ba on port 8080
-monai-1              | 
-monai-1              | NOTE: The SHMEM allocation limit is set to the default of 64MB.  This may be
-monai-1              |    insufficient for PyTorch.  NVIDIA recommends the use of the following flags:
-monai-1              |    docker run --gpus all --ipc=host --ulimit memlock=-1 --ulimit stack=67108864 ...
-monai-1              | 
-monai-1 exited with code 0
-postgres-exporter-1  | time="2025-05-14T11:22:23Z" level=info msg="Established new database connection to \"db:5432\"." source="postgres_exporter.go:970"
-db-1                 | 2025-05-14 11:22:23.616 UTC [36] FATAL:  database "praxia_db" does not exist
-prometheus-1         | time=2025-05-14T11:22:24.514Z level=INFO source=compact.go:582 msg="write block resulted in empty block" component=tsdb mint=1747152000000 maxt=1747159200000 duration=31.806375ms
-prometheus-1         | time=2025-05-14T11:22:24.523Z level=INFO source=head.go:1400 msg="Head GC completed" component=tsdb caller=truncateMemory duration=5.104125ms
-prometheus-1         | time=2025-05-14T11:22:24.523Z level=INFO source=checkpoint.go:100 msg="Creating checkpoint" component=tsdb from_segment=6 to_segment=7 mint=1747159200000
-prometheus-1         | time=2025-05-14T11:22:24.573Z level=INFO source=head.go:1362 msg="WAL checkpoint complete" component=tsdb first=6 last=7 duration=50.010333ms
-postgres-exporter-1  | time="2025-05-14T11:22:24Z" level=error msg="Error opening connection to database (postgresql://amariah:PASSWORD_REMOVED@db:5432/praxia_db?sslmode=disable): pq: database \"praxia_db\" does not exist" source="postgres_exporter.go:1608"
-celery-beat-1        | INFO:__main__:Downloading DenseNet121 weights...
-web-1                | INFO:__main__:Downloading DenseNet121 weights...
-celery-1             | INFO:__main__:Downloading DenseNet121 weights...
-web-1                | Downloading weights...
-web-1                | If this fails you can run `wget https://github.com/mlmed/torchxrayvision/releases/download/v1/nih-pc-chex-mimic_ch-google-openi-kaggle-densenet121-d121-tw-lr001-rot45-tr15-sc15-seed0-best.pt -O /root/.torchxrayvision/models_data/nih-pc-chex-mimic_ch-google-openi-kaggle-densenet121-d121-tw-lr001-rot45-tr15-sc15-seed0-best.pt`
-celery-beat-1        | Downloading weights...
-celery-beat-1        | If this fails you can run `wget https://github.com/mlmed/torchxrayvision/releases/download/v1/nih-pc-chex-mimic_ch-google-openi-kaggle-densenet121-d121-tw-lr001-rot45-tr15-sc15-seed0-best.pt -O /root/.torchxrayvision/models_data/nih-pc-chex-mimic_ch-google-openi-kaggle-densenet121-d121-tw-lr001-rot45-tr15-sc15-seed0-best.pt`
-celery-1             | Downloading weights...
-celery-1             | If this fails you can run `wget https://github.com/mlmed/torchxrayvision/releases/download/v1/nih-pc-chex-mimic_ch-google-openi-kaggle-densenet121-d121-tw-lr001-rot45-tr15-sc15-seed0-best.pt -O /root/.torchxrayvision/models_data/nih-pc-chex-mimic_ch-google-openi-kaggle-densenet121-d121-tw-lr001-rot45-tr15-sc15-seed0-best.pt`
-redis-exporter-1     | time="2025-05-14T11:22:33Z" level=info msg="checkKeys metric collection for role: master  flag: false"
-postgres-exporter-1  | time="2025-05-14T11:22:38Z" level=info msg="Established new database connection to \"db:5432\"." source="postgres_exporter.go:970"
-db-1                 | 2025-05-14 11:22:38.596 UTC [37] FATAL:  database "praxia_db" does not exist
-postgres-exporter-1  | time="2025-05-14T11:22:39Z" level=error msg="Error opening connection to database (postgresql://amariah:PASSWORD_REMOVED@db:5432/praxia_db?sslmode=disable): pq: database \"praxia_db\" does not exist" source="postgres_exporter.go:1608"
-redis-exporter-1     | time="2025-05-14T11:22:48Z" level=info msg="checkKeys metric collection for role: master  flag: false"
-postgres-exporter-1  | time="2025-05-14T11:22:53Z" level=info msg="Established new database connection to \"db:5432\"." source="postgres_exporter.go:970"
-db-1                 | 2025-05-14 11:22:53.599 UTC [38] FATAL:  database "praxia_db" does not exist
-postgres-exporter-1  | time="2025-05-14T11:22:54Z" level=error msg="Error opening connection to database (postgresql://amariah:PASSWORD_REMOVED@db:5432/praxia_db?sslmode=disable): pq: database \"praxia_db\" does not exist" source="postgres_exporter.go:1608"
+postgres-exporter-1  | time="2025-05-14T11:38:44Z" level=error msg="Error opening connection to database (postgresql://amariah:PASSWORD_REMOVED@db:5432/praxia_db?sslmode=disable): pq: database \"praxia_db\" does not exist" source="postgres_exporter.go:1608"
+web-1                | Attempt 24: PostgreSQL not ready yet, waiting...
+celery-beat-1        | Attempt 24: PostgreSQL not ready yet, waiting...
+celery-1             | Attempt 24: PostgreSQL not ready yet, waiting...
+web-1                | Attempt 25: PostgreSQL not ready yet, waiting...
+celery-beat-1        | Attempt 25: PostgreSQL not ready yet, waiting...
+celery-1             | Attempt 25: PostgreSQL not ready yet, waiting...
+web-1                | Attempt 26: PostgreSQL not ready yet, waiting...
+celery-beat-1        | Attempt 26: PostgreSQL not ready yet, waiting...
+celery-1             | Attempt 26: PostgreSQL not ready yet, waiting...
+redis-exporter-1     | time="2025-05-14T11:38:50Z" level=error msg="Couldn't connect to redis instance (redis://localhost:6379)"
+web-1                | Attempt 27: PostgreSQL not ready yet, waiting...
+celery-1             | Attempt 27: PostgreSQL not ready yet, waiting...
+celery-beat-1        | Attempt 27: PostgreSQL not ready yet, waiting...
+web-1                | Attempt 28: PostgreSQL not ready yet, waiting...
+celery-beat-1        | Attempt 28: PostgreSQL not ready yet, waiting...
+celery-1             | Attempt 28: PostgreSQL not ready yet, waiting...
+web-1                | Attempt 29: PostgreSQL not ready yet, waiting...
+celery-1             | Attempt 29: PostgreSQL not ready yet, waiting...
+celery-beat-1        | Attempt 29: PostgreSQL not ready yet, waiting...
+web-1                | Attempt 30: PostgreSQL not ready yet, waiting...
+celery-1             | Attempt 30: PostgreSQL not ready yet, waiting...
+celery-beat-1        | Attempt 30: PostgreSQL not ready yet, waiting...
+Gracefully stopping... (press Ctrl+C again to force)
+[+] Stopping 14/14
+ ✔ Container praxia_backend-grafana-1            Stopped                                                                                                        0.7s 
+ ✔ Container praxia_backend-sam-1                Stopped                                                                                                        0.0s 
+ ✔ Container praxia_backend-libretranslate-1     Stopped                                                                                                       10.4s 
+ ✔ Container praxia_backend-celery-beat-1        Stopped                                                                                                        2.0s 
+ ✔ Container praxia_backend-cadvisor-1           Stopped                                                                                                        0.5s 
+ ✔ Container praxia_backend-node-exporter-1      Stopped                                                                                                        0.6s 
+ ✔ Container praxia_backend-celery-1             Stopped                                                                                                        2.0s 
+ ✔ Container praxia_backend-redis-exporter-1     Stopped                                                                                                        0.6s 
+ ✔ Container praxia_backend-monai-1              Stopped                                                                                                        0.0s 
+ ✔ Container praxia_backend-postgres-exporter-1  Stopped                                                                                                        0.6s 
+ ✔ Container praxia_backend-prometheus-1         Stopped                                                                                                        0.2s 
+ ✔ Container praxia_backend-web-1                Stopped                                                                                                       10.2s 
+ ✔ Container praxia_backend-db-1                 Stopped                                                                                                        0.2s 
+ ✔ Container praxia_backend-redis-1              Stopped                                                                                                        0.3s 
+amariah@Amariahs-MacBook-Air Praxia_Backend % python manage.py migrate                
+Operations to perform:
+  Apply all migrations: admin, api, auth, authtoken, contenttypes, otp_totp, sessions
+Running migrations:
+  Applying contenttypes.0001_initial... OK
+  Applying auth.0001_initial... OK
+  Applying admin.0001_initial... OK
+  Applying admin.0002_logentry_remove_auto_add... OK
+  Applying admin.0003_logentry_add_action_flag_choices... OK
+  Applying api.0001_initial... OK
+  Applying contenttypes.0002_remove_content_type_name... OK
+  Applying auth.0002_alter_permission_name_max_length... OK
+  Applying auth.0003_alter_user_email_max_length... OK
+  Applying auth.0004_alter_user_username_opts... OK
+  Applying auth.0005_alter_user_last_login_null... OK
+  Applying auth.0006_require_contenttypes_0002... OK
+  Applying auth.0007_alter_validators_add_error_messages... OK
+  Applying auth.0008_alter_user_username_max_length... OK
+  Applying auth.0009_alter_user_last_name_max_length... OK
+  Applying auth.0010_alter_group_name_max_length... OK
+  Applying auth.0011_update_proxy_permissions... OK
+  Applying auth.0012_alter_user_first_name_max_length... OK
+  Applying authtoken.0001_initial... OK
+  Applying authtoken.0002_auto_20160226_1747... OK
+  Applying authtoken.0003_tokenproxy... OK
+  Applying authtoken.0004_alter_tokenproxy_options... OK
+  Applying otp_totp.0001_initial... OK
+  Applying otp_totp.0002_auto_20190420_0723... OK
+  Applying otp_totp.0003_add_timestamps... OK
+  Applying sessions.0001_initial... OK

@@ -8,6 +8,7 @@ ENV BASE_DIR /app
 # Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     netcat-traditional \
+    postgresql-client \
     gcc \
     g++ \
     build-essential \
@@ -25,8 +26,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy project
 COPY . .
 
-# Make entrypoint executable
+# Make entrypoint scripts executable
 RUN chmod +x /app/entrypoint.sh
+RUN chmod +x /app/entrypoint.prod.sh
 
 # Create necessary directories
 RUN mkdir -p /app/media/profile_pics
@@ -41,4 +43,5 @@ RUN chmod -R 755 /app/staticfiles
 RUN chmod -R 755 /app/data
 RUN chmod -R 755 /app/prometheus
 
+# Use different entrypoint based on environment
 ENTRYPOINT ["/app/entrypoint.sh"]
