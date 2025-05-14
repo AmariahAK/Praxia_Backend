@@ -101,7 +101,12 @@ services:
       - ./data/models:/models
     networks:
       - praxia-network
-
+    shm_size: "1g"
+    ipc: host
+    ulimits:
+      memlock: -1
+      stack: 67108864
+    command: ["python", "-c", "import monai; print('MONAI initialized successfully'); import time; while True: time.sleep(3600)"]
   sam:
     image: sam-med2d:latest
     build:

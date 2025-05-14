@@ -13,12 +13,12 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/5.0/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = config('SECRET_KEY', default='django-insecure-9+s6ql(kj0js+6llr6^7^#^k0bsa*&97fwpkg@wa+imuyb189z')
+SECRET_KEY = config('SECRET_KEY')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = config('DEBUG', default=True, cast=bool)
+DEBUG = config('DEBUG', cast=bool)
 
-ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='127.0.0.1,localhost', cast=Csv())
+ALLOWED_HOSTS = config('ALLOWED_HOSTS', cast=Csv())
 
 # Application definition
 
@@ -92,61 +92,67 @@ WSGI_APPLICATION = 'praxia_backend.wsgi.application'
 # https://docs.djangoproject.com/en/5.0/ref/settings/#databases
 
 # Database sharding settings
-USE_SHARDING = config('USE_SHARDING', default=False, cast=bool)
+USE_SHARDING = config('USE_SHARDING', cast=bool)
 
 if USE_SHARDING:
     # Define multiple database connections for sharding
     DATABASES = {
         'default': {
-            'ENGINE': config('DB_ENGINE', default='django.db.backends.postgresql'),
-            'NAME': config('DB_NAME', default='praxia_db'),
-            'USER': config('DB_USER', default=''),
-            'PASSWORD': config('DB_PASSWORD', default=''),
-            'HOST': config('DB_HOST', default=''),
-            'PORT': config('DB_PORT', default=''),
-            'CONN_MAX_AGE': 600,
+            'ENGINE': config('DB_ENGINE'),
+            'NAME': config('DB_NAME'),
+            'USER': config('DB_USER'),
+            'PASSWORD': config('DB_PASSWORD'),
+            'HOST': config('DB_HOST'),
+            'PORT': config('DB_PORT'),
+            'CONN_MAX_AGE': config('DB_CONN_MAX_AGE', cast=int),
             'OPTIONS': {
-                'connect_timeout': 10,
+                'connect_timeout': config('DB_CONNECT_TIMEOUT', cast=int),
                 'application_name': 'praxia',
-                'keepalives': 1,
-                'keepalives_idle': 30,
-                'keepalives_interval': 10,
-                'keepalives_count': 5,
+                'keepalives': config('DB_KEEPALIVES', cast=int),
+                'keepalives_idle': config('DB_KEEPALIVES_IDLE', cast=int),
+                'keepalives_interval': config('DB_KEEPALIVES_INTERVAL', cast=int),
+                'keepalives_count': config('DB_KEEPALIVES_COUNT', cast=int),
             },
+            'ATOMIC_REQUESTS': config('DB_ATOMIC_REQUESTS', cast=bool),
+            'AUTOCOMMIT': config('DB_AUTOCOMMIT', cast=bool),
         },
         'shard_1': {
-            'ENGINE': config('DB_ENGINE', default='django.db.backends.postgresql'),
-            'NAME': config('SHARD1_DB_NAME', default='praxia_shard1'),
-            'USER': config('SHARD1_DB_USER', default=config('DB_USER', '')),
-            'PASSWORD': config('SHARD1_DB_PASSWORD', default=config('DB_PASSWORD', '')),
-            'HOST': config('SHARD1_DB_HOST', default=config('DB_HOST', '')),
-            'PORT': config('SHARD1_DB_PORT', default=config('DB_PORT', '')),
-            'CONN_MAX_AGE': 600,
+            'ENGINE': config('DB_ENGINE'),
+            'NAME': config('SHARD1_DB_NAME'),
+            'USER': config('SHARD1_DB_USER'),
+            'PASSWORD': config('SHARD1_DB_PASSWORD'),
+            'HOST': config('SHARD1_DB_HOST'),
+            'PORT': config('SHARD1_DB_PORT'),
+            'CONN_MAX_AGE': config('DB_CONN_MAX_AGE', cast=int),
             'OPTIONS': {
-                'connect_timeout': 10,
+                'connect_timeout': config('DB_CONNECT_TIMEOUT', cast=int),
                 'application_name': 'praxia_shard1',
-                'keepalives': 1,
-                'keepalives_idle': 30,
-                'keepalives_interval': 10,
-                'keepalives_count': 5,
+                'keepalives': config('DB_KEEPALIVES', cast=int),
+                'keepalives_idle': config('DB_KEEPALIVES_IDLE', cast=int),
+                'keepalives_interval': config('DB_KEEPALIVES_INTERVAL', cast=int),
+                'keepalives_count': config('DB_KEEPALIVES_COUNT', cast=int),
             },
+            'ATOMIC_REQUESTS': config('DB_ATOMIC_REQUESTS', cast=bool),
+            'AUTOCOMMIT': config('DB_AUTOCOMMIT', cast=bool),
         },
         'shard_2': {
-            'ENGINE': config('DB_ENGINE', default='django.db.backends.postgresql'),
-            'NAME': config('SHARD2_DB_NAME', default='praxia_shard2'),
-            'USER': config('SHARD2_DB_USER', default=config('DB_USER', '')),
-            'PASSWORD': config('SHARD2_DB_PASSWORD', default=config('DB_PASSWORD', '')),
-            'HOST': config('SHARD2_DB_HOST', default=config('DB_HOST', '')),
-            'PORT': config('SHARD2_DB_PORT', default=config('DB_PORT', '')),
-            'CONN_MAX_AGE': 600,
+            'ENGINE': config('DB_ENGINE'),
+            'NAME': config('SHARD2_DB_NAME'),
+            'USER': config('SHARD2_DB_USER'),
+            'PASSWORD': config('SHARD2_DB_PASSWORD'),
+            'HOST': config('SHARD2_DB_HOST'),
+            'PORT': config('SHARD2_DB_PORT'),
+            'CONN_MAX_AGE': config('DB_CONN_MAX_AGE', cast=int),
             'OPTIONS': {
-                'connect_timeout': 10,
+                'connect_timeout': config('DB_CONNECT_TIMEOUT', cast=int),
                 'application_name': 'praxia_shard2',
-                'keepalives': 1,
-                'keepalives_idle': 30,
-                'keepalives_interval': 10,
-                'keepalives_count': 5,
+                'keepalives': config('DB_KEEPALIVES', cast=int),
+                'keepalives_idle': config('DB_KEEPALIVES_IDLE', cast=int),
+                'keepalives_interval': config('DB_KEEPALIVES_INTERVAL', cast=int),
+                'keepalives_count': config('DB_KEEPALIVES_COUNT', cast=int),
             },
+            'ATOMIC_REQUESTS': config('DB_ATOMIC_REQUESTS', cast=bool),
+            'AUTOCOMMIT': config('DB_AUTOCOMMIT', cast=bool),
         },
     }
     
@@ -155,25 +161,23 @@ if USE_SHARDING:
 else:
     DATABASES = {
         'default': {
-            'ENGINE': config('DB_ENGINE', default='django.db.backends.postgresql'),
-            'NAME': config('DB_NAME', default=os.path.join(BASE_DIR, 'db.sqlite3')),
-            'USER': config('DB_USER', default=''),
-            'PASSWORD': config('DB_PASSWORD', default=''),
-            'HOST': config('DB_HOST', default=''),
-            'PORT': config('DB_PORT', default=''),
-            # Connection pooling settings
-            'CONN_MAX_AGE': 600,  # Keep connections alive for 10 minutes
+            'ENGINE': config('DB_ENGINE'),
+            'NAME': config('DB_NAME'),
+            'USER': config('DB_USER'),
+            'PASSWORD': config('DB_PASSWORD'),
+            'HOST': config('DB_HOST'),
+            'PORT': config('DB_PORT'),
+            'CONN_MAX_AGE': config('DB_CONN_MAX_AGE', cast=int),
             'OPTIONS': {
-                'connect_timeout': 10,
+                'connect_timeout': config('DB_CONNECT_TIMEOUT', cast=int),
                 'application_name': 'praxia',
-                # For more connections with pgbouncer
-                'keepalives': 1,
-                'keepalives_idle': 30,
-                'keepalives_interval': 10,
-                'keepalives_count': 5,
+                'keepalives': config('DB_KEEPALIVES', cast=int),
+                'keepalives_idle': config('DB_KEEPALIVES_IDLE', cast=int),
+                'keepalives_interval': config('DB_KEEPALIVES_INTERVAL', cast=int),
+                'keepalives_count': config('DB_KEEPALIVES_COUNT', cast=int),
             },
-            'ATOMIC_REQUESTS': False,  # Set to True if you want all views to be in transactions
-            'AUTOCOMMIT': True,
+            'ATOMIC_REQUESTS': config('DB_ATOMIC_REQUESTS', cast=bool),
+            'AUTOCOMMIT': config('DB_AUTOCOMMIT', cast=bool),
         }
     }
 
@@ -200,7 +204,7 @@ CHANNEL_LAYERS = {
     'default': {
         'BACKEND': 'channels_redis.core.RedisChannelLayer',
         'CONFIG': {
-            "hosts": [(config('REDIS_HOST', default='redis'), config('REDIS_PORT', default=6379, cast=int))],
+            "hosts": [(config('REDIS_HOST'), config('REDIS_PORT', cast=int))],
         },
     },
 }
@@ -208,29 +212,26 @@ CHANNEL_LAYERS = {
 # Internationalization
 # https://docs.djangoproject.com/en/5.0/topics/i18n/
 
-LANGUAGE_CODE = 'en-us'
+LANGUAGE_CODE = config('LANGUAGE_CODE')
+TIME_ZONE = config('TIME_ZONE')
+USE_I18N = config('USE_I18N', cast=bool)
+USE_TZ = config('USE_TZ', cast=bool)
 
-TIME_ZONE = 'UTC'
-
-USE_I18N = True
-
-USE_TZ = True
-
-#Email Configurations
-EMAIL_BACKEND = config('EMAIL_BACKEND', default='django.core.mail.backends.smtp.EmailBackend')
-EMAIL_HOST = config('EMAIL_HOST', default='smtp.gmail.com')
-EMAIL_PORT = config('EMAIL_PORT', default=587, cast=int)
-EMAIL_USE_TLS = config('EMAIL_USE_TLS', default=True, cast=bool)
-EMAIL_HOST_USER = config('EMAIL_HOST_USER', default='')
-EMAIL_HOST_PASSWORD = config('EMAIL_HOST_PASSWORD', default='')
-DEFAULT_FROM_EMAIL = config('DEFAULT_FROM_EMAIL', default='Praxia <noreply@praxia.example.com>')
+# Email Configurations
+EMAIL_BACKEND = config('EMAIL_BACKEND')
+EMAIL_HOST = config('EMAIL_HOST')
+EMAIL_PORT = config('EMAIL_PORT', cast=int)
+EMAIL_USE_TLS = config('EMAIL_USE_TLS', cast=bool)
+EMAIL_HOST_USER = config('EMAIL_HOST_USER')
+EMAIL_HOST_PASSWORD = config('EMAIL_HOST_PASSWORD')
+DEFAULT_FROM_EMAIL = config('DEFAULT_FROM_EMAIL')
 
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/5.0/howto/static-files/
 
 # CDN settings
-USE_CDN = config('USE_CDN', default=False, cast=bool)
-CDN_URL = config('CDN_URL', default='')
+USE_CDN = config('USE_CDN', cast=bool)
+CDN_URL = config('CDN_URL')
 
 if USE_CDN and CDN_URL:
     # Prepend CDN URL to static and media URLs in production
@@ -241,14 +242,14 @@ else:
     MEDIA_URL = '/media/'
 
 # AWS S3 settings for CDN (if using AWS CloudFront with S3)
-if config('USE_S3', default=False, cast=bool):
+if config('USE_S3', cast=bool):
     # AWS settings
     AWS_ACCESS_KEY_ID = config('AWS_ACCESS_KEY_ID')
     AWS_SECRET_ACCESS_KEY = config('AWS_SECRET_ACCESS_KEY')
     AWS_STORAGE_BUCKET_NAME = config('AWS_STORAGE_BUCKET_NAME')
-    AWS_S3_CUSTOM_DOMAIN = config('AWS_S3_CUSTOM_DOMAIN', default=f'{AWS_STORAGE_BUCKET_NAME}.s3.amazonaws.com')
+    AWS_S3_CUSTOM_DOMAIN = config('AWS_S3_CUSTOM_DOMAIN')
     AWS_S3_OBJECT_PARAMETERS = {
-        'CacheControl': 'max-age=86400',
+        'CacheControl': config('AWS_S3_OBJECT_CACHE_CONTROL'),
     }
     
     # S3 static settings
@@ -264,6 +265,7 @@ if config('USE_S3', default=False, cast=bool):
 
 # Media files
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.0/ref/settings/#default-auto-field
@@ -279,27 +281,38 @@ REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.IsAuthenticated',
     ],
+    'DEFAULT_FILTER_BACKENDS': [
+        'django_filters.rest_framework.DjangoFilterBackend',
+    ],
+    'DEFAULT_THROTTLE_RATES': {
+        'anon': config('REST_FRAMEWORK_DEFAULT_THROTTLE_RATES_ANON'),
+        'user': config('REST_FRAMEWORK_DEFAULT_THROTTLE_RATES_USER'),
+        'ai_consultation': config('REST_FRAMEWORK_DEFAULT_THROTTLE_RATES_AI_CONSULTATION'),
+        'ai_xray': config('REST_FRAMEWORK_DEFAULT_THROTTLE_RATES_AI_XRAY'),
+        'ai_research': config('REST_FRAMEWORK_DEFAULT_THROTTLE_RATES_AI_RESEARCH'),
+        'ai_chat': config('REST_FRAMEWORK_DEFAULT_THROTTLE_RATES_AI_CHAT'),
+    }
 }
 
 # CORS settings
-CORS_ALLOW_ALL_ORIGINS = config('CORS_ALLOW_ALL_ORIGINS', default=DEBUG, cast=bool)
-CORS_ALLOWED_ORIGINS = config('CORS_ALLOWED_ORIGINS', default='http://localhost:3000,http://127.0.0.1:3000', cast=Csv())
+CORS_ALLOW_ALL_ORIGINS = config('CORS_ALLOW_ALL_ORIGINS', cast=bool)
+CORS_ALLOWED_ORIGINS = config('CORS_ALLOWED_ORIGINS', cast=Csv())
 
 # Celery settings
-CELERY_BROKER_URL = config('CELERY_BROKER_URL', default='redis://localhost:6379/0')
-CELERY_RESULT_BACKEND = config('CELERY_RESULT_BACKEND', default='redis://localhost:6379/0')
-CELERY_ACCEPT_CONTENT = ['json']
-CELERY_TASK_SERIALIZER = 'json'
-CELERY_RESULT_SERIALIZER = 'json'
+CELERY_BROKER_URL = config('CELERY_BROKER_URL')
+CELERY_RESULT_BACKEND = config('CELERY_RESULT_BACKEND')
+CELERY_ACCEPT_CONTENT = config('CELERY_ACCEPT_CONTENT', cast=Csv())
+CELERY_TASK_SERIALIZER = config('CELERY_TASK_SERIALIZER')
+CELERY_RESULT_SERIALIZER = config('CELERY_RESULT_SERIALIZER')
 CELERY_TIMEZONE = TIME_ZONE
 
 # AI settings
-TOGETHER_AI_API_KEY = config('TOGETHER_AI_API_KEY', default='')
-TOGETHER_AI_MODEL = config('TOGETHER_AI_MODEL', default='Qwen/Qwen2.5-7B-Instruct')
-INITIALIZE_XRAY_MODEL = config('INITIALIZE_XRAY_MODEL', default=False, cast=bool)
+TOGETHER_AI_API_KEY = config('TOGETHER_AI_API_KEY')
+TOGETHER_AI_MODEL = config('TOGETHER_AI_MODEL')
+INITIALIZE_XRAY_MODEL = config('INITIALIZE_XRAY_MODEL', cast=bool)
 
 # Health check settings
-HEALTH_CHECK_INTERVAL = config('HEALTH_CHECK_INTERVAL', default=14 * 60, cast=int)  # 14 minutes in seconds
+HEALTH_CHECK_INTERVAL = config('HEALTH_CHECK_INTERVAL', cast=int)
 
 LOGGING = {
     'version': 1,
@@ -318,11 +331,15 @@ LOGGING = {
 }
 
 # LibreTranslate settings
-LIBRETRANSLATE_URL = config('LIBRETRANSLATE_URL', default='http://libretranslate:5000')
+LIBRETRANSLATE_URL = config('LIBRETRANSLATE_URL')
 
 # Health news settings
-HEALTH_NEWS_SOURCES = config('HEALTH_NEWS_SOURCES', default='who,cdc', cast=Csv())
-HEALTH_NEWS_CACHE_TIMEOUT = config('HEALTH_NEWS_CACHE_TIMEOUT', default=60*60*12, cast=int)  # 12 hours
+HEALTH_NEWS_SOURCES = config('HEALTH_NEWS_SOURCES', cast=Csv())
+HEALTH_NEWS_CACHE_TIMEOUT = config('HEALTH_NEWS_CACHE_TIMEOUT', cast=int)
 
 # 2FA settings
-OTP_TOTP_ISSUER = config('OTP_TOTP_ISSUER', default='Praxia Health')
+OTP_TOTP_ISSUER = config('OTP_TOTP_ISSUER')
+
+# File upload limits
+DATA_UPLOAD_MAX_MEMORY_SIZE = config('DATA_UPLOAD_MAX_MEMORY_SIZE', cast=int)
+FILE_UPLOAD_MAX_MEMORY_SIZE = config('FILE_UPLOAD_MAX_MEMORY_SIZE', cast=int)
