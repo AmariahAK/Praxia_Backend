@@ -193,13 +193,35 @@ praxia_backend/
 └── docker-compose.yml      # Docker configuration
 ```
 
-## Contributing
-Contributions are welcome! Please feel free to submit a Pull Request.
+## Contributing to Praxia
+
+Contributions are welcome! To contribute:
+
+1. Fork the repository.
+2. Create a feature branch (`git checkout -b feature/YourFeature`).
+3. Commit your changes (`git commit -m "Add YourFeature"`).
+4. Push to the branch (`git push origin feature/YourFeature`).
+5. Open a Pull Request.
+
+Please ensure your contributions comply with the Praxia License, including not using the name "Praxia" for derivative works and crediting Amariah Kamau, as specified in [LICENSE.md](guide/LICENSE.md).
 
 ## License
-This project is proprietary and owned by Amariah Kamau.
+
+This project is licensed under the Praxia License. See [LICENSE.md](guide/LICENSE.md) for details.
+
+### Third-Party Licenses
+
+Praxia uses the following open-source software:
+- [Django](https://github.com/django/django) - BSD License
+- [Django REST Framework](https://github.com/encode/django-rest-framework) - BSD License
+- [PostgreSQL](https://www.postgresql.org/) - PostgreSQL License
+- [Redis](https://github.com/redis/redis) - BSD License
+- [Celery](https://github.com/celery/celery) - BSD License
+- [MONAI](https://github.com/Project-MONAI/MONAI) - Apache 2.0 License
+- [Docker](https://github.com/docker/docker-ce) - Apache 2.0 License
 
 ## Contact
+
 - **Developer**: Amariah Kamau
 - **LinkedIn**: [https://www.linkedin.com/in/amariah-kamau-3156412a6/](https://www.linkedin.com/in/amariah-kamau-3156412a6/)
 - **GitHub**: [https://github.com/AmariahAK](https://github.com/AmariahAK)
