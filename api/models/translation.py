@@ -15,8 +15,9 @@ class TranslationService:
         
         # Load medical terms dictionary
         self.medical_terms = {
-            'sw': self._load_medical_terms('sw'),  # Swahili
             'es': self._load_medical_terms('es'),  # Spanish
+            'fr': self._load_medical_terms('fr'),  # French
+            'en': self._load_medical_terms('en'),  # English
         }
     
     def _load_medical_terms(self, language_code):
@@ -49,8 +50,8 @@ class TranslationService:
         
         Args:
             text (str): Text to translate
-            source_lang (str): Source language code (e.g., 'sw', 'es', 'en')
-            target_lang (str): Target language code (e.g., 'en', 'sw', 'es')
+            source_lang (str): Source language code (e.g., 'fr', 'es', 'en')
+            target_lang (str): Target language code (e.g., 'en', 'fr', 'es')
             
         Returns:
             str: Translated text

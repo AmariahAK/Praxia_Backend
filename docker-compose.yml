@@ -103,7 +103,7 @@ services:
       context: .
       dockerfile: Dockerfile.sam
     volumes:
-      - ./data/models:/models
+      - ./data/models:/app/data/models
     networks:
       - praxia-network
 
