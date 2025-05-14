@@ -366,3 +366,7 @@ docker-compose logs -f web
 
 ### Health Check
 The system includes a health check endpoint at `/api/health/` that provides status information for all components.
+
+---
+
+[← Back to Main README](../README.md)
