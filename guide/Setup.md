@@ -11,6 +11,7 @@ This guide provides detailed instructions for setting up the Praxia Backend syst
 - [AI Model Configuration](#ai-model-configuration)
 - [Monitoring Setup](#monitoring-setup)
 - [Troubleshooting](#troubleshooting)
+- [Dynamic Environment Configuration](#dynamic-environment-configuration)
 
 ## Prerequisites
 
@@ -269,6 +270,34 @@ Production setup requires pre-configured external PostgreSQL databases (main dat
 
 7. Access the admin interface at `https://your-domain.com/admin/` using the superuser credentials defined in your `.env.prod` file.
 
+## Dynamic Environment Configuration
+
+Praxia Backend uses a dynamic environment configuration system that automatically selects the appropriate entrypoint script and environment file based on which docker-compose file is used.
+
+### How It Works
+
+1. The system uses a wrapper script (`docker-entrypoint-wrapper.sh`) that determines which environment is being used.
+2. For development (using `docker-compose.yml`):
+   - Uses `entrypoint.sh` as the entrypoint script
+   - Uses `.env` for environment variables
+3. For production (using `docker-compose.prod.yml`):
+   - Uses `entrypoint.prod.sh` as the entrypoint script
+   - Uses `.env.prod` for environment variables
+
+### Usage
+
+- For development:
+  ```bash
+  docker-compose up --build
+  ```
+
+- For production:
+  ```bash
+  docker-compose -f docker-compose.prod.yml up --build
+  ```
+
+The system automatically detects which environment is being used based on the `ENVIRONMENT` variable set in the docker-compose files.
+
 ## Database Configuration
 
 ### Development Database
@@ -370,3 +399,4 @@ The system includes a health check endpoint at `/api/health/` that provides stat
 ---
 
 [← Back to Main README](../README.md)
+```

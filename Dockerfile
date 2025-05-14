@@ -43,5 +43,5 @@ RUN chmod -R 755 /app/staticfiles
 RUN chmod -R 755 /app/data
 RUN chmod -R 755 /app/prometheus
 
-# Use different entrypoint based on environment
-ENTRYPOINT ["/app/entrypoint.sh"]
+# Use the wrapper as the entrypoint
+ENTRYPOINT ["/app/docker-entrypoint-wrapper.sh"]
