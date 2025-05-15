@@ -380,6 +380,36 @@ If containers fail to start:
 - Ensure ports are not already in use by other services
 - Check disk space and system resources
 
+#### Docker Image Download Timeouts
+If you experience timeouts when downloading Docker images (especially with slower internet connections):
+
+**Recommended approach**: Pull large images separately before starting the full stack:
+
+```bash
+# Pull the largest images individually first
+docker pull projectmonai/monai:latest
+docker pull libretranslate/libretranslate
+docker pull grafana/grafana
+docker pull prom/prometheus
+```
+
+Then start the full stack:
+
+```bash
+docker compose up --build
+```
+
+Alternatively, you can start services incrementally:
+
+```bash
+# Start core services first
+docker compose up -d db redis
+# Then add application services
+docker compose up -d web celery celery-beat
+# Finally add monitoring and AI services
+docker compose up -d monai prometheus grafana libretranslate
+```
+
 ### Logs
 Access logs for troubleshooting:
 ```bash
