@@ -101,7 +101,6 @@ For detailed setup instructions, refer to the [Setup Guide](guide/Setup.md).
 Praxia_Backend/
 ├── api/                    # Main application
 │   ├── AI/                 # AI-related logic
-│   │   ├── __pycache__/
 │   │   ├── ai_healthcheck.py  # Health check views for AI services
 │   │   └── praxia_model.py    # AI model integration
 │   ├── email_templates/    # Email templates for user notifications
@@ -110,25 +109,25 @@ Praxia_Backend/
 │   │   ├── password_reset.html
 │   │   └── verification_email.html
 │   ├── middleware/         # Custom middleware
-│   │   ├── __pycache__/
 │   │   └── throttling.py   # Rate limiting logic
 │   ├── models/             # Database models
-│   │   ├── __pycache__/
 │   │   ├── __init__.py
 │   │   ├── ai.py           # AI-related models
 │   │   ├── auth.py         # Authentication models
 │   │   ├── translation.py  # Translation models
 │   │   └── user.py         # User models
 │   ├── serializers/        # API serializers
-│   │   ├── __pycache__/
 │   │   ├── __init__.py
 │   │   ├── ai_serializer.py   # AI data serialization
 │   │   ├── auth_serializer.py # Authentication serialization
 │   │   └── user_serializer.py # User data serialization
 │   ├── urls/               # URL routing
-│   │   ├── __pycache__/
 │   │   └── urls.py         # API URL configurations
-│   ├── __pycache__/
+│   ├── views/              # API views
+│   │   ├── ai_views.py     # AI-related views
+│   │   ├── auth_views.py   # Authentication views
+│   │   ├── health_views.py # Health check views
+│   │   └── user_views.py   # User-related views
 │   ├── __init__.py
 │   ├── admin.py            # Django admin configurations
 │   ├── apps.py             # App configurations
@@ -143,11 +142,9 @@ Praxia_Backend/
 │   ├── grafana/provisioning/  # Grafana provisioning configs
 │   ├── models/             # AI model weights
 │   └── ai_identity.txt     # AI identity information
-├── media/                  # User-uploaded files
 ├── nginx/                  # Nginx configuration
 │   └── nginx.conf          # Nginx server config
 ├── praxia_backend/         # Project settings
-│   ├── __pycache__/
 │   ├── __init__.py
 │   ├── asgi.py             # ASGI configuration
 │   ├── celery.py           # Celery configuration
@@ -156,14 +153,9 @@ Praxia_Backend/
 │   └── wsgi.py             # WSGI configuration
 ├── prometheus/             # Prometheus configuration
 │   └── prometheus.yml      # Prometheus config file
-├── staticfiles/            # Static files
 ├── utils/                  # Utility functions
-│   ├── __pycache__/
 │   ├── download_model.py   # Model download utilities
 │   └── email.py            # Email utilities
-├── .env                    # Environment variables
-├── .env.prod               # Production environment variables
-├── .gitignore              # Git ignore file
 ├── docker-compose.prod.yml # Docker Compose for production
 ├── docker-compose.yml      # Docker Compose configuration
 ├── Dockerfile              # Docker configuration
