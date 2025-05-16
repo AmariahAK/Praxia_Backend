@@ -1,4 +1,17 @@
 FROM python:3.13-slim
-RUN pip install transformers torch
+
+# Install dependencies
+RUN pip install --no-cache-dir transformers torch huggingface_hub
+
+# Set working directory
 WORKDIR /app
-CMD ["python"]
+
+# Create model directory
+RUN mkdir -p /app/data/models
+
+# Set environment variable for offline mode if needed
+ENV TRANSFORMERS_OFFLINE=0
+ENV HF_TOKEN=""
+
+# Command to keep container running
+CMD ["python", "-c", "import time; print('SAM container initialized'); while True: time.sleep(3600)"]
