@@ -14,17 +14,28 @@ create_db_if_not_exists() {
     fi
 }
 
-# Create user database (for user specified in .env)
-echo "Creating user database..."
-psql -U "$POSTGRES_USER" -c "CREATE DATABASE $POSTGRES_USER;" || echo "User database already exists"
+# Create the main database first
+echo "Creating main database..."
+psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" <<-EOSQL
+    CREATE DATABASE "$DB_NAME";
+    GRANT ALL PRIVILEGES ON DATABASE "$DB_NAME" TO "$POSTGRES_USER";
+EOSQL
 
-# Create main database
-create_db_if_not_exists "$DB_NAME"
+# Create user database if needed
+echo "Creating user database if it doesn't exist..."
+psql -v ON_ERROR_STOP=0 -U "$POSTGRES_USER" <<-EOSQL
+    CREATE DATABASE "$POSTGRES_USER";
+EOSQL
 
 # Create shard databases if sharding is enabled
 if [ "$USE_SHARDING" = "True" ]; then
-    create_db_if_not_exists "$SHARD1_DB_NAME"
-    create_db_if_not_exists "$SHARD2_DB_NAME"
+    echo "Creating shard databases..."
+    psql -v ON_ERROR_STOP=0 -U "$POSTGRES_USER" <<-EOSQL
+        CREATE DATABASE "$SHARD1_DB_NAME";
+        CREATE DATABASE "$SHARD2_DB_NAME";
+        GRANT ALL PRIVILEGES ON DATABASE "$SHARD1_DB_NAME" TO "$POSTGRES_USER";
+        GRANT ALL PRIVILEGES ON DATABASE "$SHARD2_DB_NAME" TO "$POSTGRES_USER";
+EOSQL
 fi
 
 echo "All databases initialized successfully!"

@@ -15,6 +15,16 @@ for i in {1..30}; do
   fi
 done
 
+# Create database if it doesn't exist
+echo "Checking if database exists..."
+if ! psql -h $DB_HOST -p $DB_PORT -U $DB_USER -lqt | cut -d \| -f 1 | grep -qw $DB_NAME; then
+    echo "Creating database $DB_NAME..."
+    createdb -h $DB_HOST -p $DB_PORT -U $DB_USER $DB_NAME
+    echo "Database $DB_NAME created successfully!"
+else
+    echo "Database $DB_NAME already exists."
+fi
+
 # Download model weights if they don't exist
 echo "Checking for DenseNet121 model weights..."
 if [ ! -f "/app/data/models/densenet_xray.pth" ]; then

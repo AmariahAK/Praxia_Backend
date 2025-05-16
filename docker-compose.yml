@@ -30,7 +30,11 @@ services:
     environment:
       - POSTGRES_PASSWORD=${DB_PASSWORD}
       - POSTGRES_USER=${DB_USER}
-      - POSTGRES_DB=${DB_NAME}
+      - POSTGRES_DB=postgres
+      - DB_NAME=${DB_NAME}
+      - USE_SHARDING=${USE_SHARDING}
+      - SHARD1_DB_NAME=${SHARD1_DB_NAME}
+      - SHARD2_DB_NAME=${SHARD2_DB_NAME}
     ports:
       - "5432:5432"
     restart: always
@@ -93,8 +97,7 @@ services:
     ulimits:
       memlock: -1
       stack: 67108864
-    command: >
-      python -c "import monai; print('MONAI initialized successfully'); import time; while True: time.sleep(3600)"
+    command: ["python", "-c", "import monai; print('MONAI initialized successfully'); import time; while True: time.sleep(3600)"]
   sam:
     image: sam-med2d:latest
     build:
