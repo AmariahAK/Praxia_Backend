@@ -186,6 +186,8 @@ SHARD2_DB_PORT=5432
 
 In development mode, the system will automatically create the necessary databases in the PostgreSQL container.
 
+### Initial Setup
+
 1. Clone the repository:
    ```bash
    git clone https://github.com/AmariahAK/Praxia_Backend.git
@@ -194,16 +196,33 @@ In development mode, the system will automatically create the necessary database
 
 2. Create a `.env` file in the project root using the example above.
 
-3. Build and start the containers:
+3. Make sure all script files are executable:
+   ```bash
+   chmod +x docker-entrypoint-wrapper.sh
+   chmod +x entrypoint.sh
+   chmod +x entrypoint.prod.sh
+   chmod +x init-db.sh
+   ```
+
+4. Create necessary directories:
+   ```bash
+   mkdir -p media/profile_pics
+   mkdir -p media/xrays
+   mkdir -p data/models
+   mkdir -p staticfiles
+   mkdir -p prometheus
+   ```
+
+5. Build and start the containers:
    ```bash
    docker-compose up -d
    ```
 
-4. The API will be available at `http://localhost:8000/api/`
+6. The API will be available at `http://localhost:8000/api/`
 
-5. Access the admin interface at `http://localhost:8000/admin/` using the superuser credentials defined in your `.env` file.
+7. Access the admin interface at `http://localhost:8000/admin/` using the superuser credentials defined in your `.env` file.
 
-6. Monitoring dashboards:
+8. Monitoring dashboards:
    - Prometheus: `http://localhost:9090/`
    - Grafana: `http://localhost:3000/` (default login: admin / admin_password)
 
@@ -251,24 +270,32 @@ Production setup requires pre-configured external PostgreSQL databases (main dat
 
 2. Create a `.env.prod` file in the project root using the production example above.
 
-3. Configure your external PostgreSQL databases:
+3. Make sure all script files are executable:
+   ```bash
+   chmod +x docker-entrypoint-wrapper.sh
+   chmod +x entrypoint.sh
+   chmod +x entrypoint.prod.sh
+   chmod +x init-db.sh
+   ```
+
+4. Configure your external PostgreSQL databases:
    - Create the main database (praxia_db by default)
    - If using sharding, create the shard databases (praxia_shard1 and praxia_shard2 by default)
    - Ensure the database user has appropriate permissions
 
-4. Build and start the production containers:
+5. Build and start the production containers:
    ```bash
    docker-compose -f docker-compose.prod.yml up -d
    ```
 
-5. Set up SSL certificates:
+6. Set up SSL certificates:
    - The production setup includes Certbot for Let's Encrypt certificates
    - Update the domain in `nginx/nginx.conf` to match your actual domain
    - Initial certificates will be self-signed; they'll be replaced with Let's Encrypt certificates
 
-6. The API will be available at `https://your-domain.com/api/`
+7. The API will be available at `https://your-domain.com/api/`
 
-7. Access the admin interface at `https://your-domain.com/admin/` using the superuser credentials defined in your `.env.prod` file.
+8. Access the admin interface at `https://your-domain.com/admin/` using the superuser credentials defined in your `.env.prod` file.
 
 ## Dynamic Environment Configuration
 
@@ -359,6 +386,53 @@ Praxia includes comprehensive monitoring with Prometheus and Grafana:
 
 ### Common Issues
 
+#### Permission Denied for Entrypoint Scripts
+If you encounter `exec /app/docker-entrypoint-wrapper.sh: permission denied` errors:
+
+```bash
+# Make all script files executable
+chmod +x docker-entrypoint-wrapper.sh
+chmod +x entrypoint.sh
+chmod +x entrypoint.prod.sh
+chmod +x init-db.sh
+```
+
+#### Database Does Not Exist
+If you see errors like `database "praxia_db" does not exist`:
+
+1. Make sure your init-db.sh script is executable:
+   ```bash
+   chmod +x init-db.sh
+   ```
+
+2. Verify the database settings in your .env file match what's in init-db.sh
+
+3. You can manually create the database:
+   ```bash
+   docker-compose exec db psql -U your_db_user -c "CREATE DATABASE praxia_db;"
+   ```
+
+#### MONAI Container Syntax Error
+If you see a syntax error in the MONAI container:
+
+Update the command in docker-compose.yml to use proper syntax:
+```yml
+command: >
+  python -c "import monai; print('MONAI initialized successfully'); import time; while True: time.sleep(3600)"
+```
+
+#### Missing Directories
+If containers fail because of missing directories:
+
+```bash
+# Create necessary directories
+mkdir -p media/profile_pics
+mkdir -p media/xrays
+mkdir -p data/models
+mkdir -p staticfiles
+mkdir -p prometheus
+```
+
 #### Database Connection Errors
 If you encounter database connection errors:
 - Verify database credentials in your `.env` or `.env.prod` file
@@ -379,6 +453,25 @@ If containers fail to start:
 - Verify all required environment variables are set
 - Ensure ports are not already in use by other services
 - Check disk space and system resources
+
+#### Volume Mount Issues
+If you're experiencing issues with volume mounts:
+
+1. Use the `:delegated` option for better performance:
+   ```yml
+   volumes:
+     - ./:/app:delegated
+   ```
+
+2. Ensure the host directories exist before mounting:
+   ```bash
+   mkdir -p media staticfiles data/models prometheus
+   ```
+
+3. Check for permission issues on the host directories:
+   ```bash
+   chmod -R 755 media staticfiles data prometheus
+   ```
 
 #### Docker Image Download Timeouts
 If you experience timeouts when downloading Docker images (especially with slower internet connections):
@@ -410,6 +503,70 @@ docker compose up -d web celery celery-beat
 docker compose up -d monai prometheus grafana libretranslate
 ```
 
+### Automated Setup Script
+
+For convenience, you can create a setup script to automate the initial configuration:
+
+```bash
+#!/bin/bash
+
+MODE=$1
+
+if [ "$MODE" = "dev" ]; then
+    echo "Setting up development environment..."
+    
+    # Make sure all scripts are executable
+    chmod +x docker-entrypoint-wrapper.sh
+    chmod +x entrypoint.sh
+    chmod +x entrypoint.prod.sh
+    chmod +x init-db.sh
+    
+    # Create necessary directories
+    mkdir -p media/profile_pics
+    mkdir -p media/xrays
+    mkdir -p data/models
+    mkdir -p staticfiles
+    mkdir -p prometheus
+    
+    # Create prometheus config if it doesn't exist
+    if [ ! -f prometheus/prometheus.yml ]; then
+        cp prometheus/prometheus.yml.example prometheus/prometheus.yml || echo "prometheus.yml.example not found"
+    fi
+    
+    echo "Development environment setup complete!"
+    echo "Run 'docker-compose up' to start the development environment."
+    
+elif [ "$MODE" = "prod" ]; then
+    echo "Setting up production environment..."
+    
+    # Make sure all scripts are executable
+    chmod +x docker-entrypoint-wrapper.sh
+    chmod +x entrypoint.sh
+    chmod +x entrypoint.prod.sh
+    chmod +x init-db.sh
+    
+    echo "Production environment setup complete!"
+    echo "Run 'docker-compose -f docker-compose.prod.yml up -d' to start the production environment."
+    
+else
+    echo "Usage: ./setup-env.sh [dev|prod]"
+    exit 1
+fi
+```
+
+Save this as `setup-env.sh` and make it executable:
+
+```bash
+chmod +x setup-env.sh
+```
+
+Then run it before starting your environment:
+
+```bash
+./setup-env.sh dev  # For development
+./setup-env.sh prod  # For production
+```
+
 ### Logs
 Access logs for troubleshooting:
 ```bash
@@ -425,6 +582,100 @@ docker-compose logs -f web
 
 ### Health Check
 The system includes a health check endpoint at `/api/health/` that provides status information for all components.
+
+## Recommended Docker Compose Changes
+
+For more reliable development setup, consider these changes to your docker-compose.yml:
+
+### Web Service
+```yml
+web:
+  build: .
+  volumes:
+    - ./:/app:delegated  # Use delegated for better performance
+    - static_volume:/app/staticfiles
+    - media_volume:/app/media
+  ports:
+    - "8000:8000"
+  env_file:
+    - ./.env
+  environment:
+    - ENVIRONMENT=development
+  depends_on:
+    db:
+      condition: service_healthy
+    redis:
+      condition: service_started
+  restart: always
+  networks:
+    - praxia-network
+```
+
+### Database Service
+```yml
+db:
+  image: postgres:14
+  volumes:
+    - postgres_data:/var/lib/postgresql/data/
+    - ./init-db.sh:/docker-entrypoint-initdb.d/init-db.sh
+  env_file:
+    - ./.env
+  environment:
+    - POSTGRES_PASSWORD=${DB_PASSWORD}
+    - POSTGRES_USER=${DB_USER}
+    - POSTGRES_DB=${DB_NAME}
+  ports:
+    - "5432:5432"
+  restart: always
+  networks:
+    - praxia-network
+  healthcheck:
+    test: ["CMD-SHELL", "pg_isready -U ${DB_USER}"]
+    interval: 5s
+    timeout: 5s
+    retries: 5
+```
+
+### MONAI Service
+```yml
+monai:
+  image: projectmonai/monai:latest
+  platform: linux/amd64
+  ports:
+    - "8888:8888"
+  volumes:
+    - ./data/models:/models
+  networks:
+    - praxia-network
+  shm_size: "1g"
+  ipc: host
+  ulimits:
+    memlock: -1
+    stack: 67108864
+  command: >
+    python -c "import monai; print('MONAI initialized successfully'); import time; while True: time.sleep(3600)"
+```
+
+## Development vs Production Differences
+
+### Development Mode
+- Uses local Docker containers for all services
+- Creates databases automatically
+- Stores data in Docker volumes
+- Uses `.env` for configuration
+- Mounts local directories into containers for live code changes
+- Debug mode enabled
+
+### Production Mode
+- Uses external databases (pre-configured)
+- Uses Nginx for SSL termination and serving static files
+- Uses Certbot for SSL certificates
+- Uses `.env.prod` for configuration
+- No code mounting (uses built Docker images)
+- Debug mode disabled
+- Implements proper security measures
+
+By following this guide and using the troubleshooting tips, you should be able to successfully set up and run the Praxia Backend in both development and production environments.
 
 ---
 

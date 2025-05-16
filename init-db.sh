@@ -14,6 +14,10 @@ create_db_if_not_exists() {
     fi
 }
 
+# Create user database (for user specified in .env)
+echo "Creating user database..."
+psql -U "$POSTGRES_USER" -c "CREATE DATABASE $POSTGRES_USER;" || echo "User database already exists"
+
 # Create main database
 create_db_if_not_exists "$DB_NAME"
 

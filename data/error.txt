@@ -1,0 +1,168 @@
+advisor-1           | I0515 13:22:45.907502       1 sysinfo.go:303] Found cpu without cache information, cpuPath: [/sys/devices/system/cpu/cpu0 /sys/devices/system/cpu/cpu1 /sys/devices/system/cpu/cpu2 /sys/devices/system/cpu/cpu3 /sys/devices/system/cpu/cpu4 /sys/devices/system/cpu/cpu5 /sys/devices/system/cpu/cpu6 /sys/devices/system/cpu/cpu7]
+cadvisor-1           | E0515 13:22:45.907816       1 info.go:119] Failed to get system UUID: open /etc/machine-id: no such file or directory
+cadvisor-1           | I0515 13:22:45.908658       1 gce.go:44] Error while reading product_name: open /sys/class/dmi/id/product_name: no such file or directory
+cadvisor-1           | W0515 13:22:45.911604       1 info.go:53] Couldn't collect info from any of the files in "/rootfs/etc/machine-id,/var/lib/dbus/machine-id"
+cadvisor-1           | I0515 13:22:45.911787       1 manager.go:217] Machine: {Timestamp:2025-05-15 13:22:45.90961293 +0000 UTC m=+5.829453254 CPUVendorID: NumCores:8 NumPhysicalCores:8 NumSockets:1 CpuFrequency:0 MemoryCapacity:4109803520 SwapCapacity:1073737728 MemoryByType:map[] NVMInfo:{MemoryModeCapacity:0 AppDirectModeCapacity:0 AvgPowerBudget:0} HugePages:[{PageSize:1048576 NumPages:0} {PageSize:2048 NumPages:0} {PageSize:32768 NumPages:0} {PageSize:64 NumPages:0}] MachineID: SystemUUID: BootID:024a4559-17fc-4c5b-81cc-299db2d857d4 Filesystems:[{Device:/dev DeviceMajor:0 DeviceMinor:186 Capacity:67108864 Type:vfs Inodes:501685 HasInodes:true} {Device:overlay_0-63 DeviceMajor:0 DeviceMinor:63 Capacity:1081100128256 Type:vfs Inodes:67108864 HasInodes:true} {Device:overlay_0-67 DeviceMajor:0 DeviceMinor:67 Capacity:1081100128256 Type:vfs Inodes:67108864 HasInodes:true} {Device:/rootfs/host_mnt DeviceMajor:0 DeviceMinor:30 Capacity:410980352 Type:vfs Inodes:501685 HasInodes:true} {Device:overlay_0-24 DeviceMajor:0 DeviceMinor:24 Capacity:410980352 Type:vfs Inodes:501685 HasInodes:true} {Device:/var/lib/docker/rootfs/overlayfs/8076b2bb9c81454046bc90194904905f8b19b1663f032ecd1f02d206896f8813/rootfs/dev/shm DeviceMajor:0 DeviceMinor:32 Capacity:2054901760 Type:vfs Inodes:501685 HasInodes:true} {Device:/var/lib/docker/rootfs/overlayfs/8076b2bb9c81454046bc90194904905f8b19b1663f032ecd1f02d206896f8813/rootfs/run DeviceMajor:0 DeviceMinor:28 Capacity:410980352 Type:vfs Inodes:501685 HasInodes:true} {Device:/var/lib/docker/rootfs/overlayfs/8076b2bb9c81454046bc90194904905f8b19b1663f032ecd1f02d206896f8813/rootfs/var/lib/docker/rootfs/overlayfs/8076b2bb9c81454046bc90194904905f8b19b1663f032ecd1f02d206896f8813/dev/shm DeviceMajor:0 DeviceMinor:190 Capacity:67108864 Type:vfs Inodes:501685 HasInodes:true} {Device:overlay_0-81 DeviceMajor:0 DeviceMinor:81 Capacity:1081100128256 Type:vfs Inodes:67108864 HasInodes:true} {Device:overlay_0-65 DeviceMajor:0 DeviceMinor:65 Capacity:1081100128256 Type:vfs Inodes:67108864 HasInodes:true} {Device:overlay_0-74 DeviceMajor:0 DeviceMinor:74 Capacity:1081100128256 Type:vfs Inodes:67108864 HasInodes:true} {Device:/rootfs/var/lib/docker/rootfs/overlayfs/8076b2bb9c81454046bc90194904905f8b19b1663f032ecd1f02d206896f8813/dev DeviceMajor:0 DeviceMinor:186 Capacity:67108864 Type:vfs Inodes:501685 HasInodes:true} {Device:/var/lib/docker/rootfs/overlayfs/8076b2bb9c81454046bc90194904905f8b19b1663f032ecd1f02d206896f8813/rootfs/var/lib/docker/rootfs/overlayfs/8076b2bb9c81454046bc90194904905f8b19b1663f032ecd1f02d206896f8813/dev DeviceMajor:0 DeviceMinor:186 Capacity:67108864 Type:vfs Inodes:501685 HasInodes:true} {Device:/proc/kcore DeviceMajor:0 DeviceMinor:186 Capacity:67108864 Type:vfs Inodes:501685 HasInodes:true} {Device:/dev/vda1 DeviceMajor:254 DeviceMinor:1 Capacity:1081100128256 Type:vfs Inodes:67108864 HasInodes:true} {Device:/var/lib/docker/rootfs/overlayfs/8076b2bb9c81454046bc90194904905f8b19b1663f032ecd1f02d206896f8813/rootfs/var DeviceMajor:0 DeviceMinor:29 Capacity:2054901760 Type:vfs Inodes:501685 HasInodes:true} {Device:/var/lib/docker/rootfs/overlayfs/8076b2bb9c81454046bc90194904905f8b19b1663f032ecd1f02d206896f8813/rootfs/tmp DeviceMajor:0 DeviceMinor:31 Capacity:410980352 Type:vfs Inodes:501685 HasInodes:true} {Device:/proc/timer_list DeviceMajor:0 DeviceMinor:186 Capacity:67108864 Type:vfs Inodes:501685 HasInodes:true} {Device:overlay_0-79 DeviceMajor:0 DeviceMinor:79 Capacity:1081100128256 Type:vfs Inodes:67108864 HasInodes:true} {Device:/rootfs/var DeviceMajor:0 DeviceMinor:29 Capacity:2054901760 Type:vfs Inodes:501685 HasInodes:true} {Device:overlay_0-71 DeviceMajor:0 DeviceMinor:71 Capacity:1081100128256 Type:vfs Inodes:67108864 HasInodes:true} {Device:overlay_0-77 DeviceMajor:0 DeviceMinor:77 Capacity:1081100128256 Type:vfs Inodes:67108864 HasInodes:true} {Device:/var/lib/docker/rootfs/overlayfs/8076b2bb9c81454046bc90194904905f8b19b1663f032ecd1f02d206896f8813/rootfs/oldroot/run DeviceMajor:0 DeviceMinor:23 Capacity:410980352 Type:vfs Inodes:501685 HasInodes:true} {Device:/proc/keys DeviceMajor:0 DeviceMinor:186 Capacity:67108864 Type:vfs Inodes:501685 HasInodes:true} {Device:/dev/shm DeviceMajor:0 DeviceMinor:190 Capacity:67108864 Type:vfs Inodes:501685 HasInodes:true} {Device:/rootfs/dev/shm DeviceMajor:0 DeviceMinor:32 Capacity:2054901760 Type:vfs Inodes:501685 HasInodes:true} {Device:overlay_0-69 DeviceMajor:0 DeviceMinor:69 Capacity:1081100128256 Type:vfs Inodes:67108864 HasInodes:true} {Device:/proc/scsi DeviceMajor:0 DeviceMinor:193 Capacity:2054901760 Type:vfs Inodes:501685 HasInodes:true} {Device:/sys/firmware DeviceMajor:0 DeviceMinor:194 Capacity:2054901760 Type:vfs Inodes:501685 HasInodes:true} {Device:/rootfs/oldroot/run DeviceMajor:0 DeviceMinor:23 Capacity:410980352 Type:vfs Inodes:501685 HasInodes:true} {Device:/rootfs/run DeviceMajor:0 DeviceMinor:28 Capacity:410980352 Type:vfs Inodes:501685 HasInodes:true} {Device:/var/lib/docker/rootfs/overlayfs/8076b2bb9c81454046bc90194904905f8b19b1663f032ecd1f02d206896f8813/dev DeviceMajor:0 DeviceMinor:186 Capacity:67108864 Type:vfs Inodes:501685 HasInodes:true} {Device:/var/lib/docker/rootfs/overlayfs/8076b2bb9c81454046bc90194904905f8b19b1663f032ecd1f02d206896f8813/dev/shm DeviceMajor:0 DeviceMinor:190 Capacity:67108864 Type:vfs Inodes:501685 HasInodes:true} {Device:/var/lib/docker/rootfs/overlayfs/8076b2bb9c81454046bc90194904905f8b19b1663f032ecd1f02d206896f8813/rootfs/host_mnt DeviceMajor:0 DeviceMinor:30 Capacity:410980352 Type:vfs Inodes:501685 HasInodes:true} {Device:overlay_0-83 DeviceMajor:0 DeviceMinor:83 Capacity:1081100128256 Type:vfs Inodes:67108864 HasInodes:true} {Device:overlay_0-73 DeviceMajor:0 DeviceMinor:73 Capacity:1081100128256 Type:vfs Inodes:67108864 HasInodes:true} {Device:/rootfs/var/lib/docker/rootfs/overlayfs/8076b2bb9c81454046bc90194904905f8b19b1663f032ecd1f02d206896f8813/dev/shm DeviceMajor:0 DeviceMinor:190 Capacity:67108864 Type:vfs Inodes:501685 HasInodes:true} {Device:/rootfs/tmp DeviceMajor:0 DeviceMinor:31 Capacity:410980352 Type:vfs Inodes:501685 HasInodes:true} {Device:/proc/interrupts DeviceMajor:0 DeviceMinor:186 Capacity:67108864 Type:vfs Inodes:501685 HasInodes:true}] DiskMap:map[254:0:{Name:vda Major:254 Minor:0 Size:1099511627776 Scheduler:mq-deadline} 254:16:{Name:vdb Major:254 Minor:16 Size:562941952 Scheduler:mq-deadline} 43:0:{Name:nbd0 Major:43 Minor:0 Size:0 Scheduler:mq-deadline} 43:128:{Name:nbd4 Major:43 Minor:128 Size:0 Scheduler:mq-deadline} 43:160:{Name:nbd5 Major:43 Minor:160 Size:0 Scheduler:mq-deadline} 43:192:{Name:nbd6 Major:43 Minor:192 Size:0 Scheduler:mq-deadline} 43:224:{Name:nbd7 Major:43 Minor:224 Size:0 Scheduler:mq-deadline} 43:256:{Name:nbd8 Major:43 Minor:256 Size:0 Scheduler:mq-deadline} 43:288:{Name:nbd9 Major:43 Minor:288 Size:0 Scheduler:mq-deadline} 43:32:{Name:nbd1 Major:43 Minor:32 Size:0 Scheduler:mq-deadline} 43:320:{Name:nbd10 Major:43 Minor:320 Size:0 Scheduler:mq-deadline} 43:352:{Name:nbd11 Major:43 Minor:352 Size:0 Scheduler:mq-deadline} 43:384:{Name:nbd12 Major:43 Minor:384 Size:0 Scheduler:mq-deadline} 43:416:{Name:nbd13 Major:43 Minor:416 Size:0 Scheduler:mq-deadline} 43:448:{Name:nbd14 Major:43 Minor:448 Size:0 Scheduler:mq-deadline} 43:480:{Name:nbd15 Major:43 Minor:480 Size:0 Scheduler:mq-deadline} 43:64:{Name:nbd2 Major:43 Minor:64 Size:0 Scheduler:mq-deadline} 43:96:{Name:nbd3 Major:43 Minor:96 Size:0 Scheduler:mq-deadline}] NetworkDevices:[{Name:bond0 MacAddress:ba:87:f5:72:df:78 Speed:0 Mtu:1500} {Name:br-2636996c6465 MacAddress:7e:bf:d8:18:52:84 Speed:10000 Mtu:1500} {Name:dummy0 MacAddress:ae:ea:b2:68:0c:2a Speed:0 Mtu:1500} {Name:erspan0 MacAddress:00:00:00:00:00:00 Speed:0 Mtu:1450} {Name:eth0 MacAddress:26:ce:55:81:95:8d Speed:-1 Mtu:65535} {Name:gre0 MacAddress:00:00:00:00 Speed:0 Mtu:1476} {Name:gretap0 MacAddress:00:00:00:00:00:00 Speed:0 Mtu:1462} {Name:ip6_vti0 MacAddress:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00 Speed:0 Mtu:1428} {Name:ip6gre0 MacAddress:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00 Speed:0 Mtu:1448} {Name:ip6tnl0 MacAddress:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00 Speed:0 Mtu:1452} {Name:ip_vti0 MacAddress:00:00:00:00 Speed:0 Mtu:1480} {Name:services1 MacAddress:0a:ce:79:09:55:a2 Speed:10000 Mtu:1500} {Name:sit0 MacAddress:00:00:00:00 Speed:0 Mtu:1480} {Name:teql0 MacAddress: Speed:0 Mtu:1500} {Name:tunl0 MacAddress:00:00:00:00 Speed:0 Mtu:1480}] Topology:[{Id:0 Memory:0 HugePages:[] Cores:[{Id:0 Threads:[0] Caches:[] UncoreCaches:[] SocketID:0} {Id:1 Threads:[1] Caches:[] UncoreCaches:[] SocketID:0} {Id:2 Threads:[2] Caches:[] UncoreCaches:[] SocketID:0} {Id:3 Threads:[3] Caches:[] UncoreCaches:[] SocketID:0} {Id:4 Threads:[4] Caches:[] UncoreCaches:[] SocketID:0} {Id:5 Threads:[5] Caches:[] UncoreCaches:[] SocketID:0} {Id:6 Threads:[6] Caches:[] UncoreCaches:[] SocketID:0} {Id:7 Threads:[7] Caches:[] UncoreCaches:[] SocketID:0}] Caches:[] Distances:[]}] CloudProvider:Unknown InstanceType:Unknown InstanceID:None}
+cadvisor-1           | I0515 13:22:45.912325       1 manager.go:233] Version: {KernelVersion:6.10.14-linuxkit ContainerOsVersion:Alpine Linux v3.18 DockerVersion: DockerAPIVersion: CadvisorVersion:v0.49.1 CadvisorRevision:6f3f25ba}
+cadvisor-1           | I0515 13:22:45.913645       1 factory.go:55] Registering systemd factory
+cadvisor-1           | I0515 13:22:45.914933       1 factory.go:221] Registration of the systemd container factory successfully
+cadvisor-1           | I0515 13:22:45.918716       1 factory.go:219] Registration of the crio container factory failed: Get "http://%2Fvar%2Frun%2Fcrio%2Fcrio.sock/info": dial unix /var/run/crio/crio.sock: connect: no such file or directory
+cadvisor-1           | I0515 13:22:45.924581       1 factory.go:219] Registration of the mesos container factory failed: unable to create mesos agent client: failed to get version
+cadvisor-1           | I0515 13:22:45.925298       1 factory.go:219] Registration of the docker container factory failed: failed to validate Docker info: failed to detect Docker info: Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?
+cadvisor-1           | I0515 13:22:45.928105       1 factory.go:219] Registration of the podman container factory failed: failed to validate Podman info: response not present: Get "http://d/v1.0.0/info": dial unix /var/run/podman/podman.sock: connect: no such file or directory
+cadvisor-1           | I0515 13:22:45.928867       1 factory.go:219] Registration of the containerd container factory failed: unable to create containerd client: containerd: cannot unix dial containerd api service: dial unix /run/containerd/containerd.sock: connect: no such file or directory
+cadvisor-1           | I0515 13:22:45.929652       1 factory.go:103] Registering Raw factory
+cadvisor-1           | I0515 13:22:45.929727       1 manager.go:1196] Started watching for new ooms in manager
+cadvisor-1           | W0515 13:22:45.929780       1 manager.go:306] Could not configure a source for OOM detection, disabling OOM events: open /dev/kmsg: no such file or directory
+cadvisor-1           | I0515 13:22:45.932916       1 manager.go:319] Starting recovery of all containers
+cadvisor-1           | I0515 13:22:45.993883       1 manager.go:324] Recovery completed
+cadvisor-1           | I0515 13:22:45.998864       1 cadvisor.go:176] Starting cAdvisor version: v0.49.1-6f3f25ba on port 8080
+grafana-1            | logger=plugins.registration t=2025-05-15T13:22:46.167775597Z level=error msg="Could not register plugin" pluginId=table error="plugin table is already registered"
+grafana-1            | logger=plugins.initialization t=2025-05-15T13:22:46.168153597Z level=error msg="Could not initialize plugin" pluginId=table error="plugin table is already registered"
+grafana-1            | logger=plugins.registration t=2025-05-15T13:22:46.249315514Z level=info msg="Plugin registered" pluginId=grafana-exploretraces-app
+web-1 exited with code 255
+grafana-1            | logger=plugins.registration t=2025-05-15T13:22:46.53228418Z level=info msg="Plugin registered" pluginId=grafana-lokiexplore-app
+grafana-1            | logger=plugins.registration t=2025-05-15T13:22:46.628467597Z level=info msg="Plugin registered" pluginId=grafana-metricsdrilldown-app
+grafana-1            | logger=plugins.registration t=2025-05-15T13:22:46.829766791Z level=info msg="Plugin registered" pluginId=grafana-pyroscope-app
+grafana-1            | logger=plugin.store t=2025-05-15T13:22:46.829817708Z level=info msg="Plugins loaded" count=57 duration=1.063676792s
+grafana-1            | logger=provisioning.dashboard t=2025-05-15T13:22:46.892230833Z level=error msg="can't read dashboard provisioning files from directory" path=/etc/grafana/provisioning/dashboards error="open /etc/grafana/provisioning/dashboards: no such file or directory"
+grafana-1            | logger=query_data t=2025-05-15T13:22:46.907050875Z level=info msg="Query Service initialization"
+grafana-1            | logger=live.push_http t=2025-05-15T13:22:46.950437166Z level=info msg="Live Push Gateway initialization"
+grafana-1            | logger=ngalert.notifier.alertmanager org=1 t=2025-05-15T13:22:46.974242Z level=info msg="Applying new configuration to Alertmanager" configHash=d2c56faca6af2a5772ff4253222f7386
+grafana-1            | logger=ngalert t=2025-05-15T13:22:47.048254416Z level=info msg="Using simple database alert instance store"
+grafana-1            | logger=ngalert.state.manager.persist t=2025-05-15T13:22:47.048306291Z level=info msg="Using sync state persister"
+grafana-1            | logger=infra.usagestats.collector t=2025-05-15T13:22:47.086006416Z level=info msg="registering usage stat providers" usageStatsProvidersLen=2
+grafana-1            | logger=grafanaStorageLogger t=2025-05-15T13:22:47.098119916Z level=info msg="Storage starting"
+grafana-1            | logger=ngalert.state.manager t=2025-05-15T13:22:47.098171291Z level=info msg="Warming state cache for startup"
+grafana-1            | logger=provisioning.datasources t=2025-05-15T13:22:47.10494425Z level=error msg="can't read datasource provisioning files from directory" path=/etc/grafana/provisioning/datasources error="open /etc/grafana/provisioning/datasources: no such file or directory"
+grafana-1            | logger=ngalert.multiorg.alertmanager t=2025-05-15T13:22:47.129713666Z level=info msg="Starting MultiOrg Alertmanager"
+web-1                | exec /app/docker-entrypoint-wrapper.sh: permission denied
+web-1                | exec /app/docker-entrypoint-wrapper.sh: permission denied
+web-1                | exec /app/docker-entrypoint-wrapper.sh: permission denied
+grafana-1            | logger=http.server t=2025-05-15T13:22:47.2023645Z level=info msg="HTTP Server Listen" address=[::]:3000 protocol=http subUrl= socket=
+grafana-1            | logger=provisioning.alerting t=2025-05-15T13:22:47.317218166Z level=error msg="can't read alerting provisioning files from directory" path=/etc/grafana/provisioning/alerting error="open /etc/grafana/provisioning/alerting: no such file or directory"
+grafana-1            | logger=provisioning.alerting t=2025-05-15T13:22:47.317298166Z level=info msg="starting to provision alerting"
+grafana-1            | logger=provisioning.alerting t=2025-05-15T13:22:47.317325041Z level=info msg="finished to provision alerting"
+grafana-1            | logger=provisioning.dashboard t=2025-05-15T13:22:47.3184445Z level=error msg="can't read dashboard provisioning files from directory" path=/etc/grafana/provisioning/dashboards error="open /etc/grafana/provisioning/dashboards: no such file or directory"
+grafana-1            | logger=ngalert.state.manager t=2025-05-15T13:22:47.32698975Z level=info msg="State cache has been initialized" states=0 duration=228.831625ms
+grafana-1            | logger=ngalert.scheduler t=2025-05-15T13:22:47.327090791Z level=info msg="Starting scheduler" tickInterval=10s maxAttempts=3
+grafana-1            | logger=ticker t=2025-05-15T13:22:47.327311333Z level=info msg=starting first_tick=2025-05-15T13:22:50Z
+grafana-1            | logger=provisioning.dashboard t=2025-05-15T13:22:47.415184875Z level=info msg="starting to provision dashboards"
+grafana-1            | logger=provisioning.dashboard t=2025-05-15T13:22:47.415299375Z level=info msg="finished to provision dashboards"
+grafana-1            | logger=grafana-apiserver t=2025-05-15T13:22:47.56708675Z level=info msg="Adding GroupVersion folder.grafana.app v1beta1 to ResourceManager"
+grafana-1            | logger=grafana-apiserver t=2025-05-15T13:22:47.569750875Z level=info msg="Adding GroupVersion iam.grafana.app v0alpha1 to ResourceManager"
+grafana-1            | logger=grafana-apiserver t=2025-05-15T13:22:47.586725583Z level=info msg="Adding GroupVersion notifications.alerting.grafana.app v0alpha1 to ResourceManager"
+grafana-1            | logger=grafana-apiserver t=2025-05-15T13:22:47.59254425Z level=info msg="Adding GroupVersion userstorage.grafana.app v0alpha1 to ResourceManager"
+grafana-1            | logger=grafana-apiserver t=2025-05-15T13:22:47.593990458Z level=info msg="Adding GroupVersion playlist.grafana.app v0alpha1 to ResourceManager"
+grafana-1            | logger=grafana-apiserver t=2025-05-15T13:22:47.607858333Z level=info msg="Adding GroupVersion dashboard.grafana.app v1beta1 to ResourceManager"
+grafana-1            | logger=grafana-apiserver t=2025-05-15T13:22:47.609476333Z level=info msg="Adding GroupVersion dashboard.grafana.app v0alpha1 to ResourceManager"
+grafana-1            | logger=grafana-apiserver t=2025-05-15T13:22:47.61131225Z level=info msg="Adding GroupVersion dashboard.grafana.app v2alpha1 to ResourceManager"
+grafana-1            | logger=grafana-apiserver t=2025-05-15T13:22:47.618301625Z level=info msg="Adding GroupVersion featuretoggle.grafana.app v0alpha1 to ResourceManager"
+monai-1              | 
+web-1 exited with code 0
+grafana-1            | logger=plugins.update.checker t=2025-05-15T13:22:47.73423875Z level=info msg="Update check succeeded" duration=606.443792ms
+grafana-1            | logger=grafana.update.checker t=2025-05-15T13:22:47.756881875Z level=info msg="Update check succeeded" duration=658.711125ms
+grafana-1            | logger=app-registry t=2025-05-15T13:22:47.76073125Z level=info msg="app registry initialized"
+grafana-1            | logger=plugin.angulardetectorsprovider.dynamic t=2025-05-15T13:22:47.774745375Z level=info msg="Patterns update finished" duration=489.52ms
+celery-beat-1        | exec /app/docker-entrypoint-wrapper.sh: permission denied
+celery-beat-1        | exec /app/docker-entrypoint-wrapper.sh: permission denied
+celery-beat-1        | exec /app/docker-entrypoint-wrapper.sh: permission denied
+celery-beat-1        | exec /app/docker-entrypoint-wrapper.sh: permission denied
+celery-beat-1        | exec /app/docker-entrypoint-wrapper.sh: permission denied
+celery-beat-1        | exec /app/docker-entrypoint-wrapper.sh: permission denied
+grafana-1            | logger=plugin.backgroundinstaller t=2025-05-15T13:22:47.901152583Z level=info msg="Installing plugin" pluginId=grafana-pyroscope-app version=
+grafana-1            | logger=plugin.installer t=2025-05-15T13:22:48.075149917Z level=info msg="Updating plugin" pluginId=grafana-pyroscope-app from=1.3.0 to=1.4.0
+web-1                | exec /app/docker-entrypoint-wrapper.sh: permission denied
+web-1                | exec /app/docker-entrypoint-wrapper.sh: permission denied
+web-1                | exec /app/docker-entrypoint-wrapper.sh: permission denied
+web-1                | exec /app/docker-entrypoint-wrapper.sh: permission denied
+celery-beat-1 exited with code 255
+redis-exporter-1     | time="2025-05-15T13:22:48Z" level=info msg="checkKeys metric collection for role: master  flag: false"
+celery-1             | exec /app/docker-entrypoint-wrapper.sh: permission denied
+celery-1             | exec /app/docker-entrypoint-wrapper.sh: permission denied
+celery-1             | exec /app/docker-entrypoint-wrapper.sh: permission denied
+celery-1             | exec /app/docker-entrypoint-wrapper.sh: permission denied
+celery-1             | exec /app/docker-entrypoint-wrapper.sh: permission denied
+celery-1             | exec /app/docker-entrypoint-wrapper.sh: permission denied
+web-1 exited with code 255
+celery-1 exited with code 255
+web-1                | exec /app/docker-entrypoint-wrapper.sh: permission denied
+web-1                | exec /app/docker-entrypoint-wrapper.sh: permission denied
+web-1                | exec /app/docker-entrypoint-wrapper.sh: permission denied
+web-1                | exec /app/docker-entrypoint-wrapper.sh: permission denied
+web-1 exited with code 255
+monai-1              |   File "<string>", line 1
+monai-1              |     import monai; print('MONAI initialized successfully'); import time; while True: time.sleep(3600)
+monai-1              |                                                                         ^^^^^
+monai-1              | SyntaxError: invalid syntax
+prometheus-1         | time=2025-05-15T13:22:48.472Z level=INFO source=compact.go:591 msg="write block" component=tsdb mint=1747218682734 maxt=1747224000000 ulid=01JVA1S86Z59CDQQBXQ27WTHPH duration=312.849ms ooo=false
+prometheus-1         | time=2025-05-15T13:22:48.524Z level=INFO source=head.go:1400 msg="Head GC completed" component=tsdb caller=truncateMemory duration=50.016792ms
+prometheus-1         | time=2025-05-15T13:22:48.664Z level=INFO source=compact.go:591 msg="write block" component=tsdb mint=1747224424574 maxt=1747231200000 ulid=01JVA1S8JD9K667KNK9Y6QGY5R duration=139.104375ms ooo=false
+prometheus-1         | time=2025-05-15T13:22:48.689Z level=INFO source=head.go:1400 msg="Head GC completed" component=tsdb caller=truncateMemory duration=24.75375ms
+prometheus-1         | time=2025-05-15T13:22:48.690Z level=INFO source=checkpoint.go:100 msg="Creating checkpoint" component=tsdb from_segment=18 to_segment=19 mint=1747231200000
+monai-1 exited with code 1
+prometheus-1         | time=2025-05-15T13:22:48.770Z level=INFO source=head.go:1362 msg="WAL checkpoint complete" component=tsdb first=18 last=19 duration=80.594625ms
+web-1                | exec /app/docker-entrypoint-wrapper.sh: permission denied
+web-1                | exec /app/docker-entrypoint-wrapper.sh: permission denied
+web-1                | exec /app/docker-entrypoint-wrapper.sh: permission denied
+web-1                | exec /app/docker-entrypoint-wrapper.sh: permission denied
+web-1                | exec /app/docker-entrypoint-wrapper.sh: permission denied
+web-1 exited with code 255
+db-1                 | 2025-05-15 13:22:49.956 UTC [48] FATAL:  database "amariah" does not exist
+celery-beat-1        | exec /app/docker-entrypoint-wrapper.sh: permission denied
+celery-beat-1        | exec /app/docker-entrypoint-wrapper.sh: permission denied
+celery-beat-1        | exec /app/docker-entrypoint-wrapper.sh: permission denied
+celery-beat-1        | exec /app/docker-entrypoint-wrapper.sh: permission denied
+celery-beat-1        | exec /app/docker-entrypoint-wrapper.sh: permission denied
+celery-beat-1        | exec /app/docker-entrypoint-wrapper.sh: permission denied
+celery-beat-1        | exec /app/docker-entrypoint-wrapper.sh: permission denied
+celery-beat-1 exited with code 255
+grafana-1            | logger=installer.fs t=2025-05-15T13:22:50.565419418Z level=info msg="Downloaded and extracted grafana-pyroscope-app v1.4.0 zip successfully to /var/lib/grafana/plugins/grafana-pyroscope-app"
+grafana-1            | logger=plugins.registration t=2025-05-15T13:22:50.596464668Z level=info msg="Plugin registered" pluginId=grafana-pyroscope-app
+grafana-1            | logger=plugin.backgroundinstaller t=2025-05-15T13:22:50.596513585Z level=info msg="Plugin successfully installed" pluginId=grafana-pyroscope-app version= duration=2.695205085s
+celery-1             | exec /app/docker-entrypoint-wrapper.sh: permission denied
+celery-1             | exec /app/docker-entrypoint-wrapper.sh: permission denied
+celery-1             | exec /app/docker-entrypoint-wrapper.sh: permission denied
+celery-1             | exec /app/docker-entrypoint-wrapper.sh: permission denied
+celery-1             | exec /app/docker-entrypoint-wrapper.sh: permission denied
+celery-1             | exec /app/docker-entrypoint-wrapper.sh: permission denied
+celery-1             | exec /app/docker-entrypoint-wrapper.sh: permission denied
+celery-1 exited with code 255
+web-1                | exec /app/docker-entrypoint-wrapper.sh: permission denied
+web-1                | exec /app/docker-entrypoint-wrapper.sh: permission denied
+web-1                | exec /app/docker-entrypoint-wrapper.sh: permission denied
+web-1                | exec /app/docker-entrypoint-wrapper.sh: permission denied
+web-1                | exec /app/docker-entrypoint-wrapper.sh: permission denied
+web-1                | exec /app/docker-entrypoint-wrapper.sh: permission denied
+web-1 exited with code 255
+web-1                | exec /app/docker-entrypoint-wrapper.sh: permission denied
+web-1                | exec /app/docker-entrypoint-wrapper.sh: permission denied
+web-1                | exec /app/docker-entrypoint-wrapper.sh: permission denied
+web-1                | exec /app/docker-entrypoint-wrapper.sh: permission denied
+web-1                | exec /app/docker-entrypoint-wrapper.sh: permission denied
+web-1                | exec /app/docker-entrypoint-wrapper.sh: permission denied
+web-1                | exec /app/docker-entrypoint-wrapper.sh: permission denied
+web-1 exited with code 255
+db-1                 | 2025-05-15 13:22:55.050 UTC [55] FATAL:  database "amariah" does not exist
+celery-beat-1        | exec /app/docker-entrypoint-wrapper.sh: permission denied
+celery-beat-1        | exec /app/docker-entrypoint-wrapper.sh: permission denied
+celery-beat-1        | exec /app/docker-entrypoint-wrapper.sh: permission denied
+celery-beat-1        | exec /app/docker-entrypoint-wrapper.sh: permission denied
+celery-beat-1        | exec /app/docker-entrypoint-wrapper.sh: permission denied
+celery-beat-1        | exec /app/docker-entrypoint-wrapper.sh: permission denied
+celery-beat-1        | exec /app/docker-entrypoint-wrapper.sh: permission denied
+celery-beat-1        | exec /app/docker-entrypoint-wrapper.sh: permission denied
+celery-beat-1 exited with code 255
+celery-1             | exec /app/docker-entrypoint-wrapper.sh: permission denied
+celery-1             | exec /app/docker-entrypoint-wrapper.sh: permission denied
+celery-1             | exec /app/docker-entrypoint-wrapper.sh: permission denied
+celery-1             | exec /app/docker-entrypoint-wrapper.sh: permission denied
+celery-1             | exec /app/docker-entrypoint-wrapper.sh: permission denied
+celery-1             | exec /app/docker-entrypoint-wrapper.sh: permission denied
+celery-1             | exec /app/docker-entrypoint-wrapper.sh: permission denied
+celery-1             | exec /app/docker-entrypoint-wrapper.sh: permission denied
+celery-1 exited with code 255
+postgres-exporter-1  | time="2025-05-15T13:22:57Z" level=info msg="Established new database connection to \"db:5432\"." source="postgres_exporter.go:970"
+db-1                 | 2025-05-15 13:22:57.453 UTC [56] FATAL:  database "praxia_db" does not exist
+postgres-exporter-1  | time="2025-05-15T13:22:58Z" level=error msg="Error opening connection to database (postgresql://amariah:PASSWORD_REMOVED@db:5432/praxia_db?sslmode=disable): pq: database \"praxia_db\" does not exist" source="postgres_exporter.go:1608"
+Gracefully stopping... (press Ctrl+C again to force)

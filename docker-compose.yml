@@ -2,7 +2,7 @@ services:
   web:
     build: .
     volumes:
-      - .:/app
+      - ./:/app:delegated
       - static_volume:/app/staticfiles
       - media_volume:/app/media
     ports:
@@ -54,7 +54,7 @@ services:
     build: .
     command: celery -A praxia_backend worker -l INFO
     volumes:
-      - .:/app
+      - ./:/app:delegated
       - media_volume:/app/media
     env_file:
       - ./.env
@@ -69,7 +69,7 @@ services:
     build: .
     command: celery -A praxia_backend beat -l INFO
     volumes:
-      - .:/app
+      - ./:/app:delegated
     env_file:
       - ./.env
     depends_on:
@@ -93,10 +93,8 @@ services:
     ulimits:
       memlock: -1
       stack: 67108864
-    command: 
-      - python 
-      - -c 
-      - "import monai; print('MONAI initialized successfully'); import time; while True: time.sleep(3600)"
+    command: >
+      python -c "import monai; print('MONAI initialized successfully'); import time; while True: time.sleep(3600)"
   sam:
     image: sam-med2d:latest
     build:
