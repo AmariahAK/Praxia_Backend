@@ -58,3 +58,17 @@ celerybeat.pid
 # Coverage
 .coverage
 htmlcov/
+
+# Model files - large binary files
+data/models/densenet_xray.pth
+data/models/*.pth
+data/models/*.pt
+data/models/*.bin
+data/models/*.onnx
+
+# Error logs
+data/error.txt
+data/*.log
+
+# Keep AI identity file
+!data/ai_identity.txt
