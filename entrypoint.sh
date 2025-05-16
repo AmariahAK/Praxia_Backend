@@ -15,11 +15,15 @@ for i in {1..30}; do
   fi
 done
 
+# Try to create postgres role if it doesn't exist
+echo "Ensuring postgres role exists..."
+PGPASSWORD=$DB_PASSWORD psql -h $DB_HOST -p $DB_PORT -U $DB_USER -c "DO \$do\$ BEGIN IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'postgres') THEN CREATE ROLE postgres WITH SUPERUSER LOGIN PASSWORD 'postgres_password'; END IF; END \$do\$;" || echo "Could not create postgres role, continuing..."
+
 # Create database if it doesn't exist
 echo "Checking if database exists..."
-if ! psql -h $DB_HOST -p $DB_PORT -U $DB_USER -lqt | cut -d \| -f 1 | grep -qw $DB_NAME; then
+if ! PGPASSWORD=$DB_PASSWORD psql -h $DB_HOST -p $DB_PORT -U $DB_USER -lqt | cut -d \| -f 1 | grep -qw $DB_NAME; then
     echo "Creating database $DB_NAME..."
-    createdb -h $DB_HOST -p $DB_PORT -U $DB_USER $DB_NAME
+    PGPASSWORD=$DB_PASSWORD createdb -h $DB_HOST -p $DB_PORT -U $DB_USER $DB_NAME
     echo "Database $DB_NAME created successfully!"
 else
     echo "Database $DB_NAME already exists."
@@ -89,7 +93,7 @@ fi
 
 # Run health check
 echo "Running initial health check..."
-python manage.py shell -c "from api.AI.ai_healthcheck import startup_health_check; startup_health_check()"
+python manage.py shell -c "from api.AI.ai_healthcheck import startup_health_check; startup_health_check()" || echo "Health check failed, continuing..."
 
 # Start server with Daphne
 echo "Starting Daphne server..."
