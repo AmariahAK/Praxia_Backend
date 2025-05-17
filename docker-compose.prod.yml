@@ -27,7 +27,7 @@ services:
     volumes:
       - media_volume:/app/media
     env_file:
-      - ./.env
+      - ./.env.prod
     environment:
       - DEBUG=False
     depends_on:
@@ -41,7 +41,7 @@ services:
     build: .
     command: celery -A praxia_backend beat -l INFO
     env_file:
-      - ./.env
+      - ./.env.prod
     environment:
       - DEBUG=False
     depends_on:
@@ -90,7 +90,7 @@ services:
     ulimits:
       memlock: -1
       stack: 67108864
-    command: ["python", "-c", "import monai; print('MONAI initialized successfully'); import time; while True: time.sleep(3600)"]
+    command: ["python", "-c", "import monai; print('MONAI initialized successfully'); import time; while 1: time.sleep(3600)"]
   sam:
     image: sam-med2d:latest
     build:
@@ -123,7 +123,7 @@ services:
       - grafana_data:/var/lib/grafana
       - ./grafana/provisioning:/etc/grafana/provisioning
     env_file:
-      - ./.env
+      - ./.env.prod
     environment:
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin_password}
       - GF_USERS_ALLOW_SIGN_UP=false
@@ -142,7 +142,7 @@ services:
     ports:
       - "5001:5000"
     env_file:
-      - ./.env
+      - ./.env.prod
     environment:
       - LT_LOAD_ONLY=${LT_LOAD_ONLY:-es,en,fr}
       - LT_THREADS=${LT_THREADS:-4}
@@ -181,7 +181,7 @@ services:
   redis-exporter:
     image: oliver006/redis_exporter
     env_file:
-      - ./.env
+      - ./.env.prod
     environment:
       - REDIS_ADDR=redis://${REDIS_HOST:-redis}:${REDIS_PORT:-6379}
     restart: always
