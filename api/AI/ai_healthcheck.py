@@ -6,17 +6,15 @@ import json
 import pymed
 import numpy as np
 import torch
-from PIL import Image
-from io import BytesIO
 from django.conf import settings
 from django.core.cache import cache
-from monai.networks.nets import UNETR
+from monai.networks.nets import DenseNet121
 from monai.transforms import Compose, LoadImage, ScaleIntensity, EnsureChannelFirst, Resize
-from transformers import SamModel, SamProcessor
 from celery import shared_task
 from bs4 import BeautifulSoup
 import structlog
 from datetime import datetime
+from PIL import Image
 from ..circuit_breaker import (
     who_breaker, mayo_breaker, together_ai_breaker, pubmed_breaker,
     circuit_breaker_with_fallback, retry_with_backoff, cache_result,
@@ -41,11 +39,9 @@ class PraxiaAI:
         
         # Initialize models
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.xray_model = None
-        self.sam_model = None
+        self.densenet_model = None
         if settings.INITIALIZE_XRAY_MODEL:
             self._initialize_xray_model()
-            self._initialize_sam_model()
     
     def _load_identity(self):
         """Load the AI identity from the text file"""
@@ -58,43 +54,23 @@ class PraxiaAI:
             return "Praxia - A healthcare AI assistant by Amariah Kamau"
     
     def _initialize_xray_model(self):
-        """Initialize the MONAI UNETR model for X-ray analysis"""
+        """Initialize the MONAI DenseNet121 model for X-ray analysis"""
         try:
-            self.xray_model = UNETR(
+            from monai.networks.nets import DenseNet121
+            self.densenet_model = DenseNet121(
+                spatial_dims=2,
                 in_channels=1,
-                out_channels=2,  # Binary classification (normal/abnormal)
-                img_size=(224, 224),
-                feature_size=16,
-                hidden_size=768,
-                mlp_dim=3072,
-                num_heads=12,
-                num_layers=12,
-                norm_name='instance',
-                dropout_rate=0.0,
+                out_channels=3,  # Fracture, tumor, pneumonia
             ).to(self.device)
             
-            model_path = os.path.join(settings.BASE_DIR, 'data', 'models', 'xray_model.pth')
+            model_path = os.path.join(settings.BASE_DIR, 'data', 'models', 'densenet_xray.pth')
             if os.path.exists(model_path):
-                self.xray_model.load_state_dict(torch.load(model_path, map_location=self.device))
-                self.xray_model.eval()
-            logger.info("MONAI UNETR model initialized", device=self.device)
+                self.densenet_model.load_state_dict(torch.load(model_path, map_location=self.device))
+                self.densenet_model.eval()
+            logger.info("DenseNet121 model initialized", device=self.device)
         except Exception as e:
-            logger.error("Error initializing X-ray model", error=str(e))
-            self.xray_model = None
-    
-    def _initialize_sam_model(self):
-        """Initialize SAM-Med2D for X-ray segmentation"""
-        try:
-            self.sam_model = SamModel.from_pretrained("facebook/segment-anything").to(self.device)
-            self.sam_processor = SamProcessor.from_pretrained("facebook/segment-anything")
-            model_path = os.path.join(settings.BASE_DIR, 'data', 'models', 'sam_med2d.pth')
-            if os.path.exists(model_path):
-                self.sam_model.load_state_dict(torch.load(model_path, map_location=self.device))
-                self.sam_model.eval()
-            logger.info("SAM-Med2D model initialized", device=self.device)
-        except Exception as e:
-            logger.error("Error initializing SAM-Med2D model", error=str(e))
-            self.sam_model = None
+            logger.error("Error initializing DenseNet121 model", error=str(e))
+            self.densenet_model = None
     
     @shared_task
     @cache_result(timeout=60*60*24, key_prefix='diagnosis')
@@ -143,58 +119,139 @@ class PraxiaAI:
             return {"error": str(e), "message": "Unable to process diagnosis."}
     
     @shared_task
-    def analyze_xray(self, image_path):
+    def analyze_xray(self, image_data):
         """
-        Analyze X-ray images using MONAI and SAM-Med2D
+        Analyze X-ray images using DenseNet121 model
         """
-        if not self.xray_model or not self.sam_model:
-            logger.error("X-ray models not initialized")
-            return {"error": "Models not initialized", "message": "X-ray analysis unavailable."}
+        if not hasattr(self, 'densenet_model') or self.densenet_model is None:
+            logger.warning("DenseNet model not initialized")
+            return {
+                "error": "X-ray analysis model not initialized",
+                "message": "The X-ray analysis model is not available."
+            }
         
         try:
+            # Cache key for results
+            cache_key = f"xray_analysis_{hash(str(image_data))}"
+            cached_result = cache.get(cache_key)
+            
+            if cached_result:
+                logger.info("Returning cached X-ray analysis")
+                return cached_result
+                
+            # Preprocess the image
             transforms = Compose([
                 LoadImage(image_only=True),
                 EnsureChannelFirst(),
                 ScaleIntensity(),
                 Resize((224, 224)),
             ])
-            image = transforms(image_path)
+            
+            # Handle different input types
+            if isinstance(image_data, str):
+                image = transforms(image_data)
+            else:
+                from PIL import Image
+                from io import BytesIO
+                image = Image.open(BytesIO(image_data))
+                image = np.array(image.convert('L'))  # Convert to grayscale
+                image = transforms(image)
+            
+            # Add batch dimension
             image = image.unsqueeze(0).to(self.device)
             
-            # MONAI classification
+            # Run inference with DenseNet model
             with torch.no_grad():
-                output = self.xray_model(image)
-                probabilities = torch.softmax(output, dim=1)
-                abnormal_prob = probabilities[0, 1].item()
+                densenet_output = self.densenet_model(image)
+                densenet_probs = torch.softmax(densenet_output, dim=1)
+                
+                # Get probabilities
+                fracture_prob = densenet_probs[0, 0].item()
+                tumor_prob = densenet_probs[0, 1].item()
+                pneumonia_prob = densenet_probs[0, 2].item()
+                normal_prob = max(0, min(1.0, 1.0 - (fracture_prob + tumor_prob + pneumonia_prob)))
             
-            # SAM-Med2D segmentation
-            image_pil = Image.open(image_path).convert('RGB')
-            inputs = self.sam_processor(image_pil, return_tensors="pt").to(self.device)
-            with torch.no_grad():
-                outputs = self.sam_model(**inputs)
-                masks = outputs.pred_masks.squeeze().cpu().numpy()
-            
+            # Determine findings
             findings = []
-            if abnormal_prob > 0.7:
-                findings.append("High-confidence abnormality detected")
-            elif abnormal_prob > 0.4:
-                findings.append("Moderate-confidence abnormality detected")
-            else:
-                findings.append("No significant abnormalities")
+            confidence_scores = {
+                "normal": round(normal_prob * 100, 2),
+                "pneumonia": round(pneumonia_prob * 100, 2),
+                "fracture": round(fracture_prob * 100, 2),
+                "tumor": round(tumor_prob * 100, 2)
+            }
+            
+            detected_conditions = {}
+            for condition, score in confidence_scores.items():
+                if score > 30:
+                    confidence_level = "low"
+                    if score > 70:
+                        confidence_level = "high"
+                    elif score > 50:
+                        confidence_level = "moderate"
+                    detected_conditions[condition] = confidence_level
+                    findings.append(f"Potential {condition} detected with {confidence_level} confidence ({score}%)")
+            
+            if not detected_conditions or confidence_scores["normal"] > 60:
+                findings.append("No significant abnormalities detected")
+                detected_conditions["normal"] = "high" if confidence_scores["normal"] > 80 else "moderate"
+            
+            # Get related research
+            research = self.get_medical_research("X-ray diagnosis " + " ".join(detected_conditions.keys()), limit=2)
+            
+            # Prepare prompt for detailed analysis
+            prompt = f"""You are Praxia, a medical AI assistant specialized in X-ray analysis. {self.identity}
+    
+            I have analyzed an X-ray image with the following findings:
+            - Detected conditions: {', '.join([f"{cond} ({level} confidence, {confidence_scores[cond]}%)" for cond, level in detected_conditions.items()])}
+    
+            Provide a detailed analysis in JSON format with these keys:
+            1. "interpretation": Detailed interpretation of the X-ray findings
+            2. "possible_conditions": List of possible conditions, ordered by likelihood
+            3. "recommendations": Recommended next steps for the patient
+            4. "limitations": Limitations of this AI analysis
+    
+            Your response must be valid JSON that can be parsed programmatically.
+            """
+            
+            # Call Together AI API
+            detailed_analysis_text = self._call_together_ai(prompt)
+            
+            # Extract JSON
+            try:
+                if "```json" in detailed_analysis_text and "```" in detailed_analysis_text.split("```json", 1)[1]:
+                    json_str = detailed_analysis_text.split("```json", 1)[1].split("```", 1)[0].strip()
+                    detailed_analysis = json.loads(json_str)
+                else:
+                    detailed_analysis = json.loads(detailed_analysis_text)
+            except json.JSONDecodeError:
+                logger.warning("Failed to parse JSON response for X-ray analysis")
+                detailed_analysis = {
+                    "interpretation": detailed_analysis_text,
+                    "possible_conditions": list(detected_conditions.keys()),
+                    "recommendations": ["Consult with a radiologist for professional interpretation"],
+                    "limitations": ["AI analysis should be confirmed by a healthcare professional"]
+                }
             
             result = {
-                "analysis": "X-ray analysis completed",
+                "analysis": "X-ray analysis completed successfully",
                 "findings": findings,
-                "confidence": abnormal_prob,
-                "masks": masks.tolist(),
-                "related_research": self.get_medical_research("X-ray abnormalities diagnosis", limit=2),
-                "disclaimer": "This is an AI interpretation; confirm with a radiologist."
+                "confidence_scores": confidence_scores,
+                "detected_conditions": detected_conditions,
+                "detailed_analysis": detailed_analysis,
+                "related_research": research,
+                "disclaimer": "This is an AI interpretation and should be confirmed by a radiologist."
             }
-            logger.info("X-ray analysis completed", image_path=image_path)
+            
+            # Cache the result
+            cache.set(cache_key, result, self.cache_timeout)
+            
+            logger.info("X-ray analysis completed successfully", 
+                        conditions=list(detected_conditions.keys()),
+                        confidence=confidence_scores)
             return result
         except Exception as e:
-            logger.error("X-ray analysis failed", error=str(e), image_path=image_path)
-            return {"error": str(e), "message": "Unable to process X-ray."}
+            logger.error("Error in X-ray analysis", error=str(e))
+            return {"error": str(e), "message": "Unable to process X-ray at this time."}
     
     @shared_task
     @circuit_breaker_with_fallback(pubmed_breaker, pubmed_fallback)
@@ -317,7 +374,6 @@ class PraxiaAI:
             context += f"Allergies: {user_profile.get('allergies')}. "
         return context
 
-# Add health check functions for Celery tasks
 @shared_task
 def scheduled_health_check():
     """Scheduled health check to ensure all services are operational"""
@@ -348,7 +404,7 @@ def scheduled_health_check():
         results["services"]["redis"] = f"error: {str(e)}"
         results["status"] = "degraded"
     
-        # Check circuit breakers
+    # Check circuit breakers
     circuit_breaker_status = check_circuit_breakers()
     results["services"]["circuit_breakers"] = circuit_breaker_status
     
@@ -371,11 +427,9 @@ def scheduled_health_check():
     try:
         praxia = PraxiaAI()
         if settings.INITIALIZE_XRAY_MODEL:
-            results["services"]["xray_model"] = "operational" if praxia.xray_model else "not_loaded"
-            results["services"]["sam_model"] = "operational" if praxia.sam_model else "not_loaded"
+            results["services"]["densenet_model"] = "operational" if praxia.densenet_model else "not_loaded"
         else:
-            results["services"]["xray_model"] = "disabled"
-            results["services"]["sam_model"] = "disabled"
+            results["services"]["densenet_model"] = "disabled"
     except Exception as e:
         results["services"]["ai_models"] = f"error: {str(e)}"
         results["status"] = "degraded"
@@ -461,17 +515,14 @@ def startup_health_check():
     try:
         if settings.INITIALIZE_XRAY_MODEL:
             praxia = PraxiaAI()
-            results["services"]["xray_model"] = "operational" if praxia.xray_model else "not_loaded"
-            results["services"]["sam_model"] = "operational" if praxia.sam_model else "not_loaded"
+            results["services"]["densenet_model"] = "operational" if praxia.densenet_model else "not_loaded"
             logger.info(
-                "AI models initialization check", 
-                xray_model=results["services"]["xray_model"],
-                sam_model=results["services"]["sam_model"]
+                "AI model initialization check", 
+                densenet_model=results["services"]["densenet_model"]
             )
         else:
-            results["services"]["xray_model"] = "disabled"
-            results["services"]["sam_model"] = "disabled"
-            logger.info("AI models disabled in settings")
+            results["services"]["densenet_model"] = "disabled"
+            logger.info("AI model disabled in settings")
     except Exception as e:
         results["services"]["ai_models"] = f"error: {str(e)}"
         results["status"] = "degraded"

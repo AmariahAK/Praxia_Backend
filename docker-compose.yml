@@ -98,15 +98,6 @@ services:
       memlock: -1
       stack: 67108864
     command: ["python", "-c", "import monai; print('MONAI initialized successfully'); import time; while True: time.sleep(3600)"]
-  sam:
-    image: sam-med2d:latest
-    build:
-      context: .
-      dockerfile: Dockerfile.sam
-    volumes:
-      - ./data/models:/app/data/models
-    networks:
-      - praxia-network
 
   prometheus:
     image: prom/prometheus

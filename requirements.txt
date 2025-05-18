@@ -31,14 +31,13 @@ black
 isort
 flake8
 mypy
-transformers
 beautifulsoup4
 structlog
 django-storages
 boto3
-django-prometheus 
+django-prometheus
 psutil
-pybreaker 
+pybreaker
 requests-futures
 locust
 websockets
