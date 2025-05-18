@@ -1,79 +1,19 @@
-  | time=2025-05-17T10:42:20.266Z level=INFO source=head.go:1362 msg="WAL checkpoint complete" component=tsdb first=33 last=35 duration=53.767ms
+     | logger=app-registry t=2025-05-17T12:45:51.603137512Z level=info msg="app registry initialized"
+web-1                | Running in development mode with entrypoint.sh and .env
+web-1                | /app/.env: line 100: syntax error near unexpected token `newline'
+web-1                | /app/.env: line 100: `DEFAULT_FROM_EMAIL=Praxia <noreply@praxia.example.com>'
+web-1                | Waiting for PostgreSQL at db:5432...
+web-1                | db:5432 - accepting connections
+web-1                | PostgreSQL started
+web-1                | Ensuring postgres role exists...
+web-1                | DO
+web-1                | Checking if database exists...
+web-1                | Database praxia_db already exists.
+web-1                | Checking for DenseNet121 model weights...
+web-1                | Model weights already exist, skipping download.
+web-1                | Applying database migrations...
+monai-1              | 
 monai-1              |   File "<string>", line 1
-monai-1              |     import monai; print('MONAI initialized successfully'); import time; while True: time.sleep(3600)
+monai-1              |     import monai; print('MONAI initialized successfully'); import time; while 1: time.sleep(3600)
 monai-1              |                                                                         ^^^^^
 monai-1              | SyntaxError: invalid syntax
-monai-1 exited with code 1
-redis-exporter-1     | time="2025-05-17T10:42:21Z" level=info msg="checkKeys metric collection for role: master  flag: false"
-celery-beat-1        | Operations to perform:
-celery-beat-1        |   Apply all migrations: admin, api, auth, authtoken, contenttypes, otp_totp, sessions
-celery-beat-1        | Running migrations:
-celery-beat-1        |   No migrations to apply.
-celery-1             | Operations to perform:
-celery-1             |   Apply all migrations: admin, api, auth, authtoken, contenttypes, otp_totp, sessions
-celery-1             | Running migrations:
-celery-1             |   No migrations to apply.
-celery-beat-1        | Creating superuser if needed...
-celery-1             | Creating superuser if needed...
-web-1                | Operations to perform:
-web-1                |   Apply all migrations: admin, api, auth, authtoken, contenttypes, otp_totp, sessions
-web-1                | Running migrations:
-web-1                |   No migrations to apply.
-web-1                | Creating superuser if needed...
-celery-1             | CommandError: Error: That username is already taken.
-celery-beat-1        | CommandError: Error: That username is already taken.
-postgres-exporter-1  | time="2025-05-17T10:42:30Z" level=info msg="Established new database connection to \"db:5432\"." source="postgres_exporter.go:970"
-postgres-exporter-1  | time="2025-05-17T10:42:30Z" level=info msg="Semantic Version Changed on \"db:5432\": 0.0.0 -> 14.18.0" source="postgres_exporter.go:1539"
-celery-1             | Collecting static files...
-celery-beat-1        | Collecting static files...
-web-1                | CommandError: Error: That username is already taken.
-web-1                | Collecting static files...
-
-Listening on TCP address 0.0.0.0:8000
-redis-exporter-1     | time="2025-05-17T10:42:51Z" level=info msg="checkKeys metric collection for role: master  flag: false"
-web-1                | 172.18.0.4:50776 - - [17/May/2025:10:42:52] "GET /metrics" 200 14911
-web-1                | 172.18.0.4:50776 - - [17/May/2025:10:42:57] "GET /metrics" 200 18551
-web-1                | 172.18.0.4:50776 - - [17/May/2025:10:43:02] "GET /metrics" 200 18551
-redis-exporter-1     | time="2025-05-17T10:43:06Z" level=info msg="checkKeys metric collection for role: master  flag: false"
-web-1                | 172.18.0.4:50776 - - [17/May/2025:10:43:07] "GET /metrics" 200 18551
-web-1                | 172.18.0.4:50776 - - [17/May/2025:10:43:12] "GET /metrics" 200 18564
-web-1                | 172.18.0.4:50776 - - [17/May/2025:10:43:17] "GET /metrics" 200 18549
-redis-exporter-1     | time="2025-05-17T10:43:21Z" level=info msg="checkKeys metric collection for role: master  flag: false"
-web-1                | 172.18.0.4:50776 - - [17/May/2025:10:43:22] "GET /metrics" 200 18551
-web-1                | 172.18.0.4:50776 - - [17/May/2025:10:43:27] "GET /metrics" 200 18565
-web-1                | 172.18.0.4:50776 - - [17/May/2025:10:43:32] "GET /metrics" 200 18551
-redis-exporter-1     | time="2025-05-17T10:43:36Z" level=info msg="checkKeys metric collection for role: master  flag: false"
-web-1                | 172.18.0.4:50776 - - [17/May/2025:10:43:37] "GET /metrics" 200 18589
-web-1                | 172.18.0.4:50776 - - [17/May/2025:10:43:42] "GET /metrics" 200 18638
-web-1                | 172.18.0.4:50776 - - [17/May/2025:10:43:47] "GET /metrics" 200 18642
-redis-exporter-1     | time="2025-05-17T10:43:51Z" level=info msg="checkKeys metric collection for role: master  flag: false"
-web-1                | 172.18.0.4:50776 - - [17/May/2025:10:43:52] "GET /metrics" 200 18645
-web-1                | 172.18.0.4:50776 - - [17/May/2025:10:43:57] "GET /metrics" 200 18645
-web-1                | 172.18.0.4:50776 - - [17/May/2025:10:44:02] "GET /metrics" 200 18645
-redis-exporter-1     | time="2025-05-17T10:44:06Z" level=info msg="checkKeys metric collection for role: master  flag: false"
-web-1                | 172.18.0.4:50776 - - [17/May/2025:10:44:07] "GET /metrics" 200 18644
-web-1                | 172.18.0.4:50776 - - [17/May/2025:10:44:12] "GET /metrics" 200 18645
-web-1                | 172.18.0.4:50776 - - [17/May/2025:10:44:18] "GET /metrics" 200 18646
-redis-exporter-1     | time="2025-05-17T10:44:21Z" level=info msg="checkKeys metric collection for role: master  flag: false"
-web-1                | 172.18.0.4:50776 - - [17/May/2025:10:44:22] "GET /metrics" 200 18658
-web-1                | 172.18.0.4:50776 - - [17/May/2025:10:44:27] "GET /metrics" 200 18644
-web-1                | 172.18.0.4:50776 - - [17/May/2025:10:44:32] "GET /metrics" 200 18644
-redis-exporter-1     | time="2025-05-17T10:44:36Z" level=info msg="checkKeys metric collection for role: master  flag: false"
-web-1                | 172.18.0.4:50776 - - [17/May/2025:10:44:37] "GET /metrics" 200 18645
-web-1                | 172.18.0.4:50776 - - [17/May/2025:10:44:42] "GET /metrics" 200 18645
-web-1                | 172.18.0.4:50776 - - [17/May/2025:10:44:47] "GET /metrics" 200 18646
-redis-exporter-1     | time="2025-05-17T10:44:51Z" level=info msg="checkKeys metric collection for role: master  flag: false"
-web-1                | 172.18.0.4:50776 - - [17/May/2025:10:44:52] "GET /metrics" 200 18645
-web-1                | 172.18.0.4:50776 - - [17/May/2025:10:44:57] "GET /metrics" 200 18645
-web-1                | 172.18.0.4:50776 - - [17/May/2025:10:45:02] "GET /metrics" 200 18645
-redis-exporter-1     | time="2025-05-17T10:45:06Z" level=info msg="checkKeys metric collection for role: master  flag: false"
-web-1                | 172.18.0.4:50776 - - [17/May/2025:10:45:07] "GET /metrics" 200 18646
-web-1                | 172.18.0.4:50776 - - [17/May/2025:10:45:12] "GET /metrics" 200 18661
-web-1                | 172.18.0.4:50776 - - [17/May/2025:10:45:17] "GET /metrics" 200 18658
-redis-exporter-1     | time="2025-05-17T10:45:21Z" level=info msg="checkKeys metric collection for role: master  flag: false"
-web-1                | 172.18.0.4:50776 - - [17/May/2025:10:45:22] "GET /metrics" 200 18646
-I0517 10:47:18.881381       1 sysinfo.go:303] Found cpu without cache information, cpuPath: [/sys/devices/system/cpu/cpu0 /sys/devices/system/cpu/cpu1 /sys/devices/system/cpu/cpu2 /sys/devices/system/cpu/cpu3 /sys/devices/system/cpu/cpu4 /sys/devices/system/cpu/cpu5 /sys/devices/system/cpu/cpu6 /sys/devices/system/cpu/cpu7]
-cadvisor-1           | E0517 10:47:18.881585       1 info.go:119] Failed to get system UUID: open /etc/machine-id: no such file or directory
-cadvisor-1           | I0517 10:47:18.882078       1 gce.go:44] Error while reading product_name: open /sys/class/dmi/id/product_name: no such file or directory
-cadvisor-1           | W0517 10:47:18.888476       1 info.go:53] Couldn't collect info from any of the files in "/rootfs/etc/machine-id,/var/lib/dbus/machine-id"
-redis-exporter-1     | time="2025-05-17T10:47:21Z" level=info msg="checkKeys metric collection for role: master  flag: false"
