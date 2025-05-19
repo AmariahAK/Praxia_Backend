@@ -168,9 +168,16 @@ services:
       - /sys:/sys:ro
       - /var/lib/docker/:/var/lib/docker:ro
       - /dev/disk/:/dev/disk:ro
+      - /etc/machine-id:/etc/machine-id:ro
     restart: always
     networks:
       - praxia-network
+    privileged: true
+    devices:
+      - /dev/kmsg:/dev/kmsg
+    command:
+      - '--docker_only=true'
+      - '--disable_metrics=disk,diskIO,network,tcp,udp,percpu,sched,process'
 
   redis-exporter:
     image: oliver006/redis_exporter
