@@ -34,6 +34,7 @@ RUN chmod +x /app/docker-entrypoint-wrapper.sh
 RUN mkdir -p /app/media/profile_pics
 RUN mkdir -p /app/media/xrays
 RUN mkdir -p /app/data/models
+COPY ./data/ /app/data/
 RUN mkdir -p /app/staticfiles
 RUN mkdir -p /app/prometheus
 
@@ -42,6 +43,7 @@ RUN chmod -R 755 /app/media
 RUN chmod -R 755 /app/staticfiles
 RUN chmod -R 755 /app/data
 RUN chmod -R 755 /app/prometheus
+RUN chmod -R 755 /app/data
 
 # Use the wrapper as the entrypoint
 ENTRYPOINT ["/app/docker-entrypoint-wrapper.sh"]

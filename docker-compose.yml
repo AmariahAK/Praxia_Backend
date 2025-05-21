@@ -3,7 +3,6 @@ services:
     build: .
     volumes:
       - ./:/app:delegated
-      - ./data:/app/data
       - static_volume:/app/staticfiles
       - media_volume:/app/media
     ports:
