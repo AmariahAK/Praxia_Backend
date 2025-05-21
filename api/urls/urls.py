@@ -21,6 +21,7 @@ from ..views import (
     TOTPDisableView,
     TOTPSetupView,
     TOTPVerifyView,
+    AuthenticatedHealthCheckView,
 )
 
 # Create a router for ViewSets
@@ -31,6 +32,7 @@ router.register(r'chat-sessions', ChatSessionViewSet, basename='chat-session')
 urlpatterns = [
     # Health check URL
     path('health/', HealthCheckView.as_view(), name='health-check'),
+    path('health/authenticated/', AuthenticatedHealthCheckView.as_view(), name='authenticated-health-check'),
     
     # Authentication URLs
     path('auth/', include([

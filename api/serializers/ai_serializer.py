@@ -5,7 +5,8 @@ from ..models import (
     MedicalConsultation, 
     XRayAnalysis, 
     ResearchQuery,
-    HealthNews
+    HealthNews,
+    HealthCheckResult,
 )
 
 class ChatMessageSerializer(serializers.ModelSerializer):
@@ -75,3 +76,10 @@ class HealthNewsSerializer(serializers.ModelSerializer):
         fields = ('id', 'title', 'source', 'url', 'summary', 'image_url', 
                   'published_date', 'created_at')
         read_only_fields = ('id', 'created_at')
+
+class HealthCheckResultSerializer(serializers.ModelSerializer):
+    """Serializer for health check results"""
+    class Meta:
+        model = HealthCheckResult
+        fields = ('id', 'timestamp', 'status', 'services_status', 'external_data')
+        read_only_fields = ('id', 'timestamp')

@@ -298,7 +298,7 @@ TOGETHER_AI_MODEL = config('TOGETHER_AI_MODEL')
 INITIALIZE_XRAY_MODEL = config('INITIALIZE_XRAY_MODEL', cast=bool)
 
 # Health check settings
-HEALTH_CHECK_INTERVAL = config('HEALTH_CHECK_INTERVAL', cast=int)
+HEALTH_CHECK_INTERVAL = config('HEALTH_CHECK_INTERVAL', cast=int, default=21600)  
 
 LOGGING = {
     'version': 1,

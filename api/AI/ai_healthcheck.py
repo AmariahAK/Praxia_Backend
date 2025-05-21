@@ -9,6 +9,8 @@ import torch
 from django.conf import settings
 from django.core.cache import cache
 from monai.networks.nets import DenseNet121
+from ..models import HealthCheckResult
+from datetime import datetime, timedelta
 from monai.transforms import Compose, LoadImage, ScaleIntensity, EnsureChannelFirst, Resize
 from celery import shared_task
 from bs4 import BeautifulSoup
@@ -376,8 +378,21 @@ class PraxiaAI:
 
 @shared_task
 def scheduled_health_check():
-    """Scheduled health check to ensure all services are operational"""
+    """Scheduled health check to ensure all services are operational and gather latest data"""
     from ..circuit_breaker import check_circuit_breakers
+    
+    # Check if we already have a recent health check (less than 6 hours old)
+    six_hours_ago = datetime.now() - timedelta(hours=6)
+    recent_check = HealthCheckResult.objects.filter(timestamp__gte=six_hours_ago).first()
+    
+    if recent_check:
+        logger.info("Using recent health check", check_id=recent_check.id)
+        return {
+            "timestamp": str(recent_check.timestamp),
+            "status": recent_check.status,
+            "services": recent_check.services_status,
+            "external_data": recent_check.external_data
+        }
     
     results = {
         "timestamp": str(datetime.now()),
@@ -449,7 +464,6 @@ def scheduled_health_check():
                 results["services"]["celery_active_tasks"] = sum(len(tasks) for tasks in active.values())
             
             # Check queue lengths
-            from django.conf import settings
             import redis
             redis_client = redis.Redis.from_url(settings.CELERY_BROKER_URL)
             queue_length = redis_client.llen('celery')
@@ -464,8 +478,37 @@ def scheduled_health_check():
         results["services"]["celery"] = f"error: {str(e)}"
         results["status"] = "degraded"
     
-    # Store health check results in cache
-    cache.set('health_check_results', results, 60 * 15)  # Cache for 15 minutes
+    # Gather external data for AI context
+    external_data = {}
+    
+    # Get latest health news
+    try:
+        praxia = PraxiaAI()
+        news_articles = praxia._scrape_health_news(source='all', limit=5)
+        external_data["health_news"] = news_articles
+    except Exception as e:
+        logger.error("Failed to gather health news", error=str(e))
+        external_data["health_news"] = []
+    
+    # Get latest medical research trends
+    try:
+        research_topics = ["COVID-19", "cancer treatment", "heart disease", "diabetes", "mental health"]
+        research_data = {}
+        
+        for topic in research_topics:
+            research_data[topic] = praxia.get_medical_research(topic, limit=2)
+            
+        external_data["research_trends"] = research_data
+    except Exception as e:
+        logger.error("Failed to gather research trends", error=str(e))
+        external_data["research_trends"] = {}
+    
+    # Store the results in the database
+    health_check = HealthCheckResult.objects.create(
+        status=results["status"],
+        services_status=results["services"],
+        external_data=external_data
+    )
     
     # Log health check results
     if results["status"] == "operational":
@@ -473,7 +516,13 @@ def scheduled_health_check():
     else:
         logger.warning("Health check detected issues", services=results["services"])
     
-    return results
+    # Return combined results
+    return {
+        "timestamp": str(health_check.timestamp),
+        "status": health_check.status,
+        "services": health_check.services_status,
+        "external_data": health_check.external_data
+    }
 
 @shared_task
 def startup_health_check():
@@ -482,62 +531,21 @@ def startup_health_check():
     
     logger.info("Running startup health check")
     
-    results = {
-        "timestamp": str(datetime.now()),
-        "status": "operational",
-        "services": {}
-    }
+    # Check if we have a recent health check (less than 6 hours old)
+    six_hours_ago = datetime.now() - timedelta(hours=6)
+    recent_check = HealthCheckResult.objects.filter(timestamp__gte=six_hours_ago).first()
     
-    # Check database connection
-    try:
-        from django.db import connections
-        connections['default'].cursor()
-        results["services"]["database"] = "operational"
-        logger.info("Database connection successful")
-    except Exception as e:
-        results["services"]["database"] = f"error: {str(e)}"
-        results["status"] = "degraded"
-        logger.error("Database connection failed", error=str(e))
+    if recent_check:
+        logger.info("Using recent health check for startup", check_id=recent_check.id)
+        return {
+            "timestamp": str(recent_check.timestamp),
+            "status": recent_check.status,
+            "services": recent_check.services_status,
+            "external_data": recent_check.external_data
+        }
     
-    # Check Redis connection
-    try:
-        from django.core.cache import cache
-        cache.set('startup_health_check', 'ok', 10)
-        assert cache.get('startup_health_check') == 'ok'
-        results["services"]["redis"] = "operational"
-        logger.info("Redis connection successful")
-    except Exception as e:
-        results["services"]["redis"] = f"error: {str(e)}"
-        results["status"] = "degraded"
-        logger.error("Redis connection failed", error=str(e))
-    
-    # Check AI model initialization
-    try:
-        if settings.INITIALIZE_XRAY_MODEL:
-            praxia = PraxiaAI()
-            results["services"]["densenet_model"] = "operational" if praxia.densenet_model else "not_loaded"
-            logger.info(
-                "AI model initialization check", 
-                densenet_model=results["services"]["densenet_model"]
-            )
-        else:
-            results["services"]["densenet_model"] = "disabled"
-            logger.info("AI model disabled in settings")
-    except Exception as e:
-        results["services"]["ai_models"] = f"error: {str(e)}"
-        results["status"] = "degraded"
-        logger.error("AI model initialization check failed", error=str(e))
-    
-    # Store startup health check results
-    cache.set('startup_health_check_results', results, 60 * 60 * 24)  # Cache for 24 hours
-    
-    # Log overall status
-    if results["status"] == "operational":
-        logger.info("Startup health check passed")
-    else:
-        logger.warning("Startup health check detected issues", services=results["services"])
-    
-    return results
+    # If no recent check, run a full health check
+    return scheduled_health_check()
 
 # Add a WebSocket health check function
 @shared_task

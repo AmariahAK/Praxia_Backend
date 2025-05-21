@@ -204,14 +204,26 @@ class PraxiaAI:
         # Build context with user profile
         context = self._build_user_context(user_profile)
         
-        # Get relevant medical research first to incorporate into prompt
-        research_results = self.get_medical_research(processed_symptoms, limit=2)
+        # Get latest health data for context
+        health_data = self._get_latest_health_data()
+        
+        # Get relevant medical research specific to these symptoms
+        research_results = self._get_topic_specific_data(processed_symptoms, limit=3)
+        
         research_context = ""
         if research_results:
             research_context = "Relevant medical research:\n"
             for i, article in enumerate(research_results):
                 research_context += f"{i+1}. {article.get('title')} ({article.get('journal')}): "
                 research_context += f"{article.get('abstract')[:200]}...\n"
+        
+        # Add recent health news context if available
+        news_context = ""
+        if 'health_news' in health_data and health_data['health_news']:
+            news_context = "Recent health news:\n"
+            for i, article in enumerate(health_data['health_news'][:2]):
+                news_context += f"{i+1}. {article.get('title')} ({article.get('source')}): "
+                news_context += f"{article.get('summary')[:150]}...\n"
         
         # Prepare prompt for the LLM with improved structure
         prompt = f"""You are Praxia, a medical AI assistant. {self.identity}
@@ -221,6 +233,8 @@ class PraxiaAI:
 Based on these symptoms: {processed_symptoms}
 
 {research_context}
+
+{news_context}
 
 WHO guidelines recommend careful assessment of symptoms and considering local disease prevalence.
 Mayo Clinic emphasizes that symptom diagnosis should consider patient history and risk factors.
@@ -954,3 +968,28 @@ Summary:"""
         except Exception as e:
             logger.error(f"Error summarizing article: {str(e)}")
             return content[:max_length] + "..."
+
+    def _get_latest_health_data(self):
+        """Get the latest health check data for AI context"""
+        from ..models import HealthCheckResult
+        
+        latest_check = HealthCheckResult.objects.order_by('-timestamp').first()
+        if latest_check:
+            return latest_check.external_data
+        return {}
+
+    def _get_topic_specific_data(self, topic, limit=3):
+        """Get topic-specific data for the current conversation"""
+        # First check if we have relevant data in the latest health check
+        health_data = self._get_latest_health_data()
+        
+        # Check if we have research trends for this topic
+        if 'research_trends' in health_data:
+            for research_topic, articles in health_data['research_trends'].items():
+                if topic.lower() in research_topic.lower():
+                    logger.info("Using cached research for topic", topic=topic)
+                    return articles[:limit]
+        
+        # If not found in health check data, perform a new search
+        logger.info("Performing new search for topic", topic=topic)
+        return self.get_medical_research(topic, limit=limit)

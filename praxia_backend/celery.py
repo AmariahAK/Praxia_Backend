@@ -16,9 +16,9 @@ app.autodiscover_tasks()
 
 # Configure periodic tasks
 app.conf.beat_schedule = {
-    'run-health-check-every-14-minutes': {
+    'run-health-check-every-6-hours': {
         'task': 'api.AI.ai_healthcheck.scheduled_health_check',
-        'schedule': crontab(minute='*/14'),  # Run every 14 minutes
+        'schedule': crontab(minute=0, hour='*/6'),  # Run every 6 hours
     },
     'fetch-health-news-daily': {
         'task': 'api.AI.praxia_model.scrape_health_news',  

@@ -115,3 +115,20 @@ class HealthNews(models.Model):
     
     def __str__(self):
         return f"{self.title} ({self.source})"
+
+class HealthCheckResult(models.Model):
+    """Stores results of periodic health checks"""
+    timestamp = models.DateTimeField(auto_now_add=True, db_index=True)
+    status = models.CharField(max_length=20, default="operational")
+    services_status = models.JSONField(default=dict)
+    external_data = models.JSONField(default=dict, blank=True)
+    
+    class Meta:
+        ordering = ['-timestamp']
+        indexes = [
+            models.Index(fields=['timestamp']),
+            models.Index(fields=['status']),
+        ]
+    
+    def __str__(self):
+        return f"Health Check at {self.timestamp.strftime('%Y-%m-%d %H:%M')}"

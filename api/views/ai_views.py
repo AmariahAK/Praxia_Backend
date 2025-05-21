@@ -16,7 +16,8 @@ from ..serializers import (
     MedicalConsultationSerializer, 
     XRayAnalysisSerializer, 
     ResearchQuerySerializer,
-    HealthNewsSerializer
+    HealthNewsSerializer,
+    HealthCheckResultSerializer
 )
 from ..AI.praxia_model import PraxiaAI
 from ..middleware.throttling import (
@@ -293,3 +294,28 @@ class HealthNewsView(APIView):
                 {"error": str(e), "message": "Unable to retrieve health news at this time."},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+
+class AuthenticatedHealthCheckView(APIView):
+    """View for authenticated health check"""
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def get(self, request):
+        """Get the latest health check results"""
+        from ..models import HealthCheckResult
+        
+        latest_check = HealthCheckResult.objects.order_by('-timestamp').first()
+        
+        if not latest_check:
+            # If no health check exists, run one now
+            from ..AI.ai_healthcheck import scheduled_health_check
+            health_data = scheduled_health_check()
+            
+            return Response({
+                "timestamp": health_data["timestamp"],
+                "status": health_data["status"],
+                "services": health_data["services"],
+                "message": "Health check performed on demand"
+            })
+        
+        serializer = HealthCheckResultSerializer(latest_check)
+        return Response(serializer.data)
