@@ -21,7 +21,7 @@ app.conf.beat_schedule = {
         'schedule': crontab(minute='*/14'),  # Run every 14 minutes
     },
     'fetch-health-news-daily': {
-        'task': 'api.AI.praxia_model.PraxiaAI.scrape_health_news',
+        'task': 'api.AI.praxia_model.scrape_health_news',  
         'schedule': crontab(hour=6, minute=0),  # Run daily at 6 AM
         'kwargs': {'source': 'all', 'limit': 5},
     },

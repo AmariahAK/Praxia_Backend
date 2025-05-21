@@ -23,6 +23,70 @@ from celery import shared_task
 # Configure structured logging
 logger = structlog.get_logger()
 
+@shared_task
+def scrape_health_news(source='who', limit=3):
+    """
+    Scrape health news from WHO and other sources, then summarize with AI
+    
+    Args:
+        source (str): Source to scrape ('who', 'cdc', 'all')
+        limit (int): Maximum number of articles to return
+        
+    Returns:
+        list: News articles with summaries
+    """
+    # Create an instance of PraxiaAI to use its methods
+    praxia = PraxiaAI()
+    
+    # Generate cache key
+    cache_key = f"health_news_{source}_{limit}"
+    cached_result = cache.get(cache_key)
+    
+    if cached_result:
+        logger.info("Returning cached health news")
+        return cached_result
+    
+    try:
+        articles = []
+        
+        # Scrape WHO news
+        if source in ['who', 'all']:
+            who_articles = praxia._scrape_who_news(limit=limit if source == 'who' else max(1, limit // 2))
+            articles.extend(who_articles)
+        
+        # Scrape CDC news
+        if source in ['cdc', 'all']:
+            cdc_articles = praxia._scrape_cdc_news(limit=limit if source == 'cdc' else max(1, limit // 2))
+            articles.extend(cdc_articles)
+        
+        # Limit the total number of articles
+        articles = articles[:limit]
+        
+        # Summarize articles with AI
+        for article in articles:
+            if 'content' in article and article['content']:
+                article['summary'] = praxia._summarize_article(article['content'])
+            else:
+                article['summary'] = "No content available for summarization."
+        
+        # Cache the results
+        cache.set(cache_key, articles, 60 * 60 * 12)  # Cache for 12 hours
+        
+        logger.info("Health news scraped successfully", source=source, count=len(articles))
+        return articles
+        
+    except Exception as e:
+        logger.error("Error scraping health news", error=str(e), source=source)
+        return [
+            {
+                "title": "Unable to retrieve health news at this time",
+                "source": source,
+                "url": "#",
+                "summary": "Please try again later.",
+                "published_date": datetime.now().strftime("%Y-%m-%d")
+            }
+        ]
+
 class PraxiaAI:
     """
     Praxia AI model for healthcare assistance
@@ -667,8 +731,7 @@ Your response must be valid JSON that can be parsed programmatically.
             logger.error("Unexpected error in API call", error=str(e))
             raise Exception(f"Unexpected error: {str(e)}")
     
-    @shared_task
-    def scrape_health_news(self, source='who', limit=3):
+    def _scrape_health_news(self, source='who', limit=3):
         """
         Scrape health news from WHO and other sources, then summarize with AI
         

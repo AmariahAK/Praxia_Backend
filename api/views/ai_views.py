@@ -1,8 +1,9 @@
 from rest_framework import status, permissions, viewsets
 import json
 from ..models import TranslationService
-from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
+from rest_framework.permissions import AllowAny
+from ..AI.praxia_model import scrape_health_news
 from rest_framework.views import APIView
 from rest_framework.parsers import MultiPartParser, FormParser
 from django.shortcuts import get_object_or_404
@@ -254,8 +255,8 @@ class HealthNewsView(APIView):
         source = request.query_params.get('source', 'all')
         limit = min(int(request.query_params.get('limit', 3)), 10)  # Cap at 10 articles
         
-        praxia = PraxiaAI()
-        news_task = praxia.scrape_health_news.delay(source=source, limit=limit)
+        # Use the standalone task instead of the class method
+        news_task = scrape_health_news.delay(source=source, limit=limit)
         
         try:
             # Wait for the task to complete with a timeout
