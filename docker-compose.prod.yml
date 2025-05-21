@@ -80,7 +80,7 @@ services:
     image: projectmonai/monai:latest
     platform: linux/amd64
     volumes:
-      - ./data/models:/models
+      - ./data/models:/app/data/models
     networks:
       - praxia-network
     shm_size: "1g"

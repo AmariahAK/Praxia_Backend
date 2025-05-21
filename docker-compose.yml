@@ -3,6 +3,7 @@ services:
     build: .
     volumes:
       - ./:/app:delegated
+      - ./data:/app/data
       - static_volume:/app/staticfiles
       - media_volume:/app/media
     ports:
@@ -30,6 +31,7 @@ services:
     command: celery -A praxia_backend worker -l INFO
     volumes:
       - ./:/app:delegated
+      - ./data:/app/data
       - media_volume:/app/media
     env_file:
       - ./.env
@@ -44,6 +46,7 @@ services:
     command: celery -A praxia_backend beat -l INFO
     volumes:
       - ./:/app:delegated
+      - ./data:/app/data
     env_file:
       - ./.env
     depends_on:
@@ -58,7 +61,7 @@ services:
     ports:
       - "8888:8888"
     volumes:
-      - ./data/models:/models
+      - ./data/models:/app/data/models
     networks:
       - praxia-network
     shm_size: "1g"
