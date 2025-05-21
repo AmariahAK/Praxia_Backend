@@ -1,30 +1,5 @@
 #!/bin/bash
 
-# Wait for database to be ready
-echo "Waiting for PostgreSQL at $DB_HOST:$DB_PORT..."
-for i in {1..30}; do
-  if pg_isready -h $DB_HOST -p $DB_PORT -U $DB_USER; then
-    echo "PostgreSQL started"
-    break
-  fi
-  echo "Attempt $i: PostgreSQL not ready yet, waiting..."
-  sleep 2
-  if [ $i -eq 30 ]; then
-    echo "Error: Could not connect to PostgreSQL after 30 attempts. Exiting."
-    exit 1
-  fi
-done
-
-# Create database if it doesn't exist
-echo "Checking if database exists..."
-if ! psql -h $DB_HOST -p $DB_PORT -U $DB_USER -lqt | cut -d \| -f 1 | grep -qw $DB_NAME; then
-    echo "Creating database $DB_NAME..."
-    createdb -h $DB_HOST -p $DB_PORT -U $DB_USER $DB_NAME
-    echo "Database $DB_NAME created successfully!"
-else
-    echo "Database $DB_NAME already exists."
-fi
-
 # Download model weights if they don't exist
 echo "Checking for DenseNet121 model weights..."
 if [ ! -f "/app/data/models/densenet_xray.pth" ]; then
@@ -58,7 +33,7 @@ mkdir -p /app/prometheus
 # Create Prometheus config if it doesn't exist
 if [ ! -f /app/prometheus/prometheus.yml ]; then
   echo "Creating Prometheus config..."
-  cat > /app/prometheus/prometheus.yml << EOF
+  cat > /app/prometheus/prometheus.yml << EOC
 global:
   scrape_interval: 15s
   evaluation_interval: 15s
@@ -80,11 +55,7 @@ scrape_configs:
   - job_name: 'redis'
     static_configs:
       - targets: ['redis-exporter:9121']
-
-  - job_name: 'postgres'
-    static_configs:
-      - targets: ['postgres-exporter:9187']
-EOF
+EOC
 fi
 
 # Run health check

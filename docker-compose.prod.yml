@@ -79,8 +79,6 @@ services:
   monai:
     image: projectmonai/monai:latest
     platform: linux/amd64
-    ports:
-      - "8888:8888"
     volumes:
       - ./data/models:/models
     networks:
@@ -102,8 +100,6 @@ services:
       - '--storage.tsdb.path=/prometheus'
       - '--web.console.libraries=/usr/share/prometheus/console_libraries'
       - '--web.console.templates=/usr/share/prometheus/consoles'
-    ports:
-      - "9090:9090"
     restart: always
     networks:
       - praxia-network
@@ -120,8 +116,6 @@ services:
       - GF_USERS_ALLOW_SIGN_UP=false
       - GF_SECURITY_ALLOW_EMBEDDING=true
       - GF_AUTH_ANONYMOUS_ENABLED=false
-    ports:
-      - "3001:3000"
     depends_on:
       - prometheus
     restart: always
@@ -130,8 +124,6 @@ services:
 
   libretranslate:
     image: libretranslate/libretranslate
-    ports:
-      - "5001:5000"
     env_file:
       - ./.env.prod
     environment:
@@ -201,7 +193,6 @@ networks:
     driver: bridge
 
 volumes:
-  postgres_data:
   static_volume:
   media_volume:
   prometheus_data:

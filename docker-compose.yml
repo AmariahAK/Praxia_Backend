@@ -12,39 +12,10 @@ services:
     environment:
       - ENVIRONMENT=development
     depends_on:
-      db:
-        condition: service_healthy
-      redis:
-        condition: service_started
+      - redis
     restart: always
     networks:
       - praxia-network
-
-  db:
-    image: postgres:14
-    volumes:
-      - postgres_data:/var/lib/postgresql/data/
-      - ./init-db.sh:/docker-entrypoint-initdb.d/init-db.sh
-    env_file:
-      - ./.env
-    environment:
-      - POSTGRES_PASSWORD=${DB_PASSWORD}
-      - POSTGRES_USER=${DB_USER}
-      - POSTGRES_DB=postgres
-      - DB_NAME=${DB_NAME}
-      - USE_SHARDING=${USE_SHARDING}
-      - SHARD1_DB_NAME=${SHARD1_DB_NAME}
-      - SHARD2_DB_NAME=${SHARD2_DB_NAME}
-    ports:
-      - "5432:5432"
-    restart: always
-    networks:
-      - praxia-network
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER}"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
 
   redis:
     image: redis:7
@@ -63,7 +34,6 @@ services:
     env_file:
       - ./.env
     depends_on:
-      - db
       - redis
     restart: always
     networks:
@@ -77,7 +47,6 @@ services:
     env_file:
       - ./.env
     depends_on:
-      - db
       - redis
     restart: always
     networks:
@@ -194,9 +163,7 @@ services:
     env_file:
       - ./.env
     environment:
-      - DATA_SOURCE_NAME=postgresql://${DB_USER}:${DB_PASSWORD}@db:${DB_PORT:-5432}/${DB_NAME}?sslmode=disable
-    depends_on:
-      - db
+      - DATA_SOURCE_NAME=postgresql://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT:-5432}/${DB_NAME}?sslmode=disable
     restart: always
     networks:
       - praxia-network
@@ -206,7 +173,6 @@ networks:
     driver: bridge
 
 volumes:
-  postgres_data:
   static_volume:
   media_volume:
   prometheus_data:

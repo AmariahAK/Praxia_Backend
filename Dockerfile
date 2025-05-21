@@ -5,10 +5,9 @@ ENV PYTHONDONTWRITEBYTECODE 1
 ENV PYTHONUNBUFFERED 1
 ENV BASE_DIR /app
 
-# Install system dependencies
+# Install system dependencies (removed postgresql-client)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     netcat-traditional \
-    postgresql-client \
     gcc \
     g++ \
     build-essential \
@@ -30,7 +29,6 @@ COPY . .
 RUN chmod +x /app/entrypoint.sh
 RUN chmod +x /app/entrypoint.prod.sh
 RUN chmod +x /app/docker-entrypoint-wrapper.sh
-RUN chmod +x /app/init-db.sh
 
 # Create necessary directories
 RUN mkdir -p /app/media/profile_pics

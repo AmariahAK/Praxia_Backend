@@ -12,7 +12,6 @@ if [ "$MODE" = "dev" ]; then
     chmod +x docker-entrypoint-wrapper.sh
     chmod +x entrypoint.sh
     chmod +x entrypoint.prod.sh
-    chmod +x init-db.sh
     
     # Create necessary directories
     mkdir -p media/profile_pics
@@ -36,7 +35,6 @@ elif [ "$MODE" = "prod" ]; then
     chmod +x docker-entrypoint-wrapper.sh
     chmod +x entrypoint.sh
     chmod +x entrypoint.prod.sh
-    chmod +x init-db.sh
     
     echo "Production environment setup complete!"
     echo "Run 'docker-compose -f docker-compose.prod.yml up -d' to start the production environment."
