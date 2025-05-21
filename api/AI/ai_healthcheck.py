@@ -218,8 +218,8 @@ class PraxiaAI:
             
             # Extract JSON
             try:
-                if "```json" in detailed_analysis_text and "```" in detailed_analysis_text.split("```json", 1)[1]:
-                    json_str = detailed_analysis_text.split("```json", 1)[1].split("```", 1)[0].strip()
+                if "" in detailed_analysis_text and "" in detailed_analysis_text.split("", 1)[1]:
+                    json_str = detailed_analysis_text.split("json", 1)[1].split("```", 1)[0].strip()
                     detailed_analysis = json.loads(json_str)
                 else:
                     detailed_analysis = json.loads(detailed_analysis_text)
@@ -595,13 +595,18 @@ class AIHealthCheck:
     def run_check(self):
         """Run health check on AI system"""
         try:
-            if not self.praxia_ai.together_api_key:
+            # Check Together AI API key
+            if not getattr(self.praxia_ai, 'together_api_key', None):
+                logger.error("Together AI API key missing")
                 return False
-                
-            if settings.INITIALIZE_XRAY_MODEL:
+
+            # Only check X-ray model if explicitly enabled
+            if getattr(settings, "INITIALIZE_XRAY_MODEL", False):
                 if not hasattr(self.praxia_ai, 'densenet_model') or self.praxia_ai.densenet_model is None:
+                    logger.error("X-ray model required but not loaded")
                     return False
-            
+
+            # If we reach here, AI system is healthy for current config
             return True
         except Exception as e:
             logger.error("AI health check failed", error=str(e))
