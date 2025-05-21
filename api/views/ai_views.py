@@ -1,6 +1,7 @@
 from rest_framework import status, permissions, viewsets
 import json
 from ..models import TranslationService
+from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.parsers import MultiPartParser, FormParser
@@ -245,7 +246,7 @@ class ResearchQueryView(APIView):
 
 class HealthNewsView(APIView):
     """View for health news"""
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [AllowAny]
     throttle_classes = [AIResearchRateThrottle]
     
     def get(self, request):
