@@ -69,10 +69,16 @@ class Command(BaseCommand):
         
         try:
             recipient = test_email or settings.EMAIL_HOST_USER
+            test_token = uuid.uuid4()
+            
+            # Build the verification URL
+            verification_url = f"{settings.FRONTEND_URL}/auth/verify-email?token={test_token}"
             
             context = {
                 'user': {'first_name': 'Test User', 'email': recipient},
-                'verification_token': uuid.uuid4(),
+                'verification_token': test_token,
+                'site_url': settings.FRONTEND_URL,
+                'verification_url': verification_url,  
             }
             
             result = send_email(
@@ -84,6 +90,8 @@ class Command(BaseCommand):
             
             if result:
                 self.stdout.write(self.style.SUCCESS(f'Template email sent successfully to {recipient}'))
+                self.stdout.write(self.style.SUCCESS(f'Using frontend URL: {settings.FRONTEND_URL}'))
+                self.stdout.write(self.style.SUCCESS(f'Verification URL: {verification_url}'))
             else:
                 self.stdout.write(self.style.ERROR(f'Failed to send template email to {recipient}'))
         except Exception as e:

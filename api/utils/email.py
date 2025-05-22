@@ -27,7 +27,7 @@ def send_email(subject, template_name, context, recipient_list, from_email=None)
     # Add common context variables
     context.update({
         'site_name': 'Praxia',
-        'site_url': 'https://praxia.example.com',
+        'site_url': settings.FRONTEND_URL,
         'support_email': settings.EMAIL_HOST_USER,
     })
     
@@ -84,19 +84,33 @@ def send_email(subject, template_name, context, recipient_list, from_email=None)
                     recipients=recipient_list)
         return False
 
+def build_url(path):
+    """Build a full URL using the FRONTEND_URL from settings"""
+    base_url = settings.FRONTEND_URL.rstrip('/')
+    path = path.lstrip('/')
+    return f"{base_url}/{path}"
+
 def send_verification_email(user, verification_token):
     """Send email verification link to user"""
     try:
         subject = "Verify your Praxia account"
         template_name = "verification_email"
+        
+        # Build the verification URL
+        verification_url = build_url(f"auth/verify-email?token={verification_token}")
+        
         context = {
             'user': user,
             'verification_token': verification_token,
+            'verification_url': verification_url,  
         }
+        
         logger.info("Sending verification email", 
                    user_id=user.id, 
                    email=user.email,
-                   token=verification_token)
+                   token=verification_token,
+                   url=verification_url) 
+                   
         result = send_email(subject, template_name, context, [user.email])
         logger.info("Verification email result", success=result)
         return result
