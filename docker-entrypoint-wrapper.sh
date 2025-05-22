@@ -22,20 +22,16 @@ export SHOULD_MIGRATE
 # Check if ENVIRONMENT variable is set to 'production'
 if [ "$ENVIRONMENT" = "production" ]; then
     echo "Running in production mode with entrypoint.prod.sh and .env.prod"
-    # Use grep to extract variable assignments and properly export them
-    grep -v '^#' /app/.env.prod | while IFS= read -r line; do
-        if [[ $line =~ ^[A-Za-z_][A-Za-z0-9_]*= ]]; then
-            export "$line"
-        fi
-    done
+    # Use a safer method to export variables
+    set -a
+    source /app/.env.prod
+    set +a
     exec /app/entrypoint.prod.sh "$@"
 else
     echo "Running in development mode with entrypoint.sh and .env"
-    # Use grep to extract variable assignments and properly export them
-    grep -v '^#' /app/.env | while IFS= read -r line; do
-        if [[ $line =~ ^[A-Za-z_][A-Za-z0-9_]*= ]]; then
-            export "$line"
-        fi
-    done
+    # Use a safer method to export variables
+    set -a
+    source /app/.env
+    set +a
     exec /app/entrypoint.sh "$@"
 fi

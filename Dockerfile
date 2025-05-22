@@ -43,7 +43,6 @@ RUN chmod -R 755 /app/media
 RUN chmod -R 755 /app/staticfiles
 RUN chmod -R 755 /app/data
 RUN chmod -R 755 /app/prometheus
-RUN chmod -R 755 /app/data
 
 # Use the wrapper as the entrypoint
 ENTRYPOINT ["/app/docker-entrypoint-wrapper.sh"]
