@@ -3,6 +3,7 @@ from django.template.loader import render_to_string
 from django.utils.html import strip_tags
 from django.conf import settings
 import structlog
+import traceback
 
 logger = structlog.get_logger(__name__)
 
@@ -31,8 +32,26 @@ def send_email(subject, template_name, context, recipient_list, from_email=None)
     })
     
     try:
+        # Log email configuration for debugging
+        logger.info("Email configuration", 
+                   host=settings.EMAIL_HOST,
+                   port=settings.EMAIL_PORT,
+                   use_tls=settings.EMAIL_USE_TLS,
+                   from_email=from_email)
+        
+        # Log template path for debugging
+        template_path = f'api/email_templates/{template_name}.html'
+        logger.info("Rendering email template", template_path=template_path)
+        
         # Render HTML content
-        html_content = render_to_string(f'api/email_templates/{template_name}.html', context)
+        try:
+            html_content = render_to_string(template_path, context)
+            logger.info("Template rendered successfully", length=len(html_content))
+        except Exception as template_error:
+            logger.error("Template rendering failed", 
+                        error=str(template_error),
+                        traceback=traceback.format_exc())
+            return False
         
         # Create plain text content by stripping HTML
         text_content = strip_tags(html_content)
@@ -58,7 +77,8 @@ def send_email(subject, template_name, context, recipient_list, from_email=None)
     
     except Exception as e:
         logger.error("Failed to send email", 
-                    error=str(e), 
+                    error=str(e),
+                    traceback=traceback.format_exc(),
                     subject=subject, 
                     template=template_name, 
                     recipients=recipient_list)
@@ -66,13 +86,26 @@ def send_email(subject, template_name, context, recipient_list, from_email=None)
 
 def send_verification_email(user, verification_token):
     """Send email verification link to user"""
-    subject = "Verify your Praxia account"
-    template_name = "verification_email"
-    context = {
-        'user': user,
-        'verification_token': verification_token,
-    }
-    return send_email(subject, template_name, context, [user.email])
+    try:
+        subject = "Verify your Praxia account"
+        template_name = "verification_email"
+        context = {
+            'user': user,
+            'verification_token': verification_token,
+        }
+        logger.info("Sending verification email", 
+                   user_id=user.id, 
+                   email=user.email,
+                   token=verification_token)
+        result = send_email(subject, template_name, context, [user.email])
+        logger.info("Verification email result", success=result)
+        return result
+    except Exception as e:
+        logger.error("Exception in send_verification_email", 
+                    error=str(e),
+                    traceback=traceback.format_exc(),
+                    user_email=user.email if user else "None")
+        return False
 
 def send_password_reset_email(user, reset_token):
     """Send password reset link to user"""

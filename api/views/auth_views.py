@@ -20,6 +20,7 @@ from ..utils.email import (
     send_password_changed_email
 )
 import structlog
+import traceback
 
 logger = structlog.get_logger(__name__)
 
@@ -30,19 +31,32 @@ class RegisterView(APIView):
     def post(self, request):
         serializer = RegisterSerializer(data=request.data)
         if serializer.is_valid():
-            user = serializer.save()
+            try:
+                user = serializer.save()
             
-            # Create email verification token
-            verification_token = EmailVerificationToken.objects.create(user=user)
+                # Create email verification token
+                verification_token = EmailVerificationToken.objects.create(user=user)
             
-            # Send verification email
-            send_verification_email(user, verification_token.token)
+                # Send verification email
+                email_sent = send_verification_email(user, verification_token.token)
             
-            return Response({
-                'message': 'User registered successfully. Please check your email to verify your account.',
-                'user_id': user.pk,
-                'email': user.email
-            }, status=status.HTTP_201_CREATED)
+                response_data = {
+                    'message': 'User registered successfully. Please check your email to verify your account.',
+                    'user_id': user.pk,
+                    'email': user.email
+                }
+            
+                # Add email status to response for debugging
+                if not email_sent:
+                    logger.warning("Verification email failed to send", user_id=user.pk, email=user.email)
+                    response_data['email_status'] = 'failed_to_send'
+            
+                return Response(response_data, status=status.HTTP_201_CREATED)
+            except Exception as e:
+                logger.error("Registration error", error=str(e), traceback=traceback.format_exc())
+                return Response({
+                    'error': 'Registration failed due to an internal error. Please try again later.'
+                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 class EmailVerificationView(APIView):
@@ -150,15 +164,15 @@ class LoginView(APIView):
             
             try:
                 user = User.objects.get(email=email)
+                # Check if user is active (email verified)
+                if not user.is_active:
+                    return Response({
+                        'error': 'Email not verified. Please check your inbox for verification email.',
+                        'email_verified': False
+                    }, status=status.HTTP_401_UNAUTHORIZED)
+            
             except User.DoesNotExist:
                 return Response({'error': 'Invalid credentials'}, status=status.HTTP_401_UNAUTHORIZED)
-            
-            # Check if user is active (email verified)
-            if not user.is_active:
-                return Response({
-                    'error': 'Email not verified. Please check your inbox for verification email.',
-                    'email_verified': False
-                }, status=status.HTTP_401_UNAUTHORIZED)
             
             # Authenticate with username and password
             user = authenticate(username=user.username, password=password)
