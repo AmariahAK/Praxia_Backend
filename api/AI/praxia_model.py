@@ -6,6 +6,7 @@ import numpy as np
 import torch
 import structlog
 from datetime import datetime
+from django.utils import timezone
 from PIL import Image
 from io import BytesIO
 from django.conf import settings
@@ -83,7 +84,7 @@ def scrape_health_news(source='who', limit=3):
                 "source": source,
                 "url": "#",
                 "summary": "Please try again later.",
-                "published_date": datetime.now().strftime("%Y-%m-%d")
+                "published_date": timezone.now().strftime("%Y-%m-%d")
             }
         ]
 

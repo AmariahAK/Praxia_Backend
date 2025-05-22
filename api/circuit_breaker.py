@@ -190,8 +190,8 @@ def check_circuit_breakers():
     for breaker in breakers:
         status[breaker.name] = {
             "state": "closed" if breaker.current_state == pybreaker.STATE_CLOSED else "open",
-            "failures": breaker.failure_count,
-            "last_failure": breaker.last_failure,
+            "fail_counter": breaker.fail_counter,  
+            "last_failure": getattr(breaker, 'last_failure', None),
             "reset_timeout": breaker.reset_timeout
         }
     

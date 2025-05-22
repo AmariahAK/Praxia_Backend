@@ -8,9 +8,9 @@ import numpy as np
 import torch
 from django.conf import settings
 from django.core.cache import cache
-from monai.networks.nets import DenseNet121
+from django.utils import timezone
 from ..models import HealthCheckResult
-from datetime import datetime, timedelta
+from datetime import timedelta
 from monai.transforms import Compose, LoadImage, ScaleIntensity, EnsureChannelFirst, Resize
 from celery import shared_task
 from bs4 import BeautifulSoup
@@ -382,7 +382,7 @@ def scheduled_health_check():
     from ..circuit_breaker import check_circuit_breakers
     
     # Check if we already have a recent health check (less than 6 hours old)
-    six_hours_ago = datetime.now() - timedelta(hours=6)
+    six_hours_ago = timezone.now() - timedelta(hours=6)
     recent_check = HealthCheckResult.objects.filter(timestamp__gte=six_hours_ago).first()
     
     if recent_check:
@@ -395,7 +395,7 @@ def scheduled_health_check():
         }
     
     results = {
-        "timestamp": str(datetime.now()),
+        "timestamp": str(timezone.now()),
         "status": "operational",
         "services": {}
     }
@@ -532,7 +532,7 @@ def startup_health_check():
     logger.info("Running startup health check")
     
     # Check if we have a recent health check (less than 6 hours old)
-    six_hours_ago = datetime.now() - timedelta(hours=6)
+    six_hours_ago = timezone.now() - timedelta(hours=6)
     recent_check = HealthCheckResult.objects.filter(timestamp__gte=six_hours_ago).first()
     
     if recent_check:
@@ -572,7 +572,7 @@ def websocket_health_check():
         status = "operational" if result else "degraded"
         
         results = {
-            "timestamp": str(datetime.now()),
+            "timestamp": str(timezone.now()),
             "service": "websocket",
             "status": status
         }
@@ -588,7 +588,7 @@ def websocket_health_check():
     except Exception as e:
         logger.error("WebSocket health check error", error=str(e))
         return {
-            "timestamp": str(datetime.now()),
+            "timestamp": str(timezone.now()),
             "service": "websocket",
             "status": "error",
             "error": str(e)
