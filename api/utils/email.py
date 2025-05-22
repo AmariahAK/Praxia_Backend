@@ -96,20 +96,20 @@ def send_verification_email(user, verification_token):
         subject = "Verify your Praxia account"
         template_name = "verification_email"
         
-        # Build the verification URL
-        verification_url = build_url(f"auth/verify-email?token={verification_token}")
+        # Build the verification URL - Change verify-email to verify_email
+        verification_url = build_url(f"auth/verify_email?token={verification_token}")
         
         context = {
             'user': user,
             'verification_token': verification_token,
-            'verification_url': verification_url,  
+            'verification_url': verification_url,
         }
         
         logger.info("Sending verification email", 
                    user_id=user.id, 
                    email=user.email,
                    token=verification_token,
-                   url=verification_url) 
+                   url=verification_url)
                    
         result = send_email(subject, template_name, context, [user.email])
         logger.info("Verification email result", success=result)
@@ -125,9 +125,14 @@ def send_password_reset_email(user, reset_token):
     """Send password reset link to user"""
     subject = "Reset your Praxia password"
     template_name = "password_reset"
+    
+    # Build the reset URL
+    reset_url = build_url(f"auth/reset_password?token={reset_token}")
+    
     context = {
         'user': user,
         'reset_token': reset_token,
+        'reset_url': reset_url,
     }
     return send_email(subject, template_name, context, [user.email])
 

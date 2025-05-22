@@ -72,7 +72,7 @@ class Command(BaseCommand):
             test_token = uuid.uuid4()
             
             # Build the verification URL
-            verification_url = f"{settings.FRONTEND_URL}/auth/verify-email?token={test_token}"
+            verification_url = f"{settings.FRONTEND_URL}/auth/verify_email?token={test_token}"
             
             context = {
                 'user': {'first_name': 'Test User', 'email': recipient},
@@ -120,3 +120,39 @@ class Command(BaseCommand):
                 self.stdout.write(self.style.ERROR(f'Failed to send verification email to {user.email}'))
         except Exception as e:
             self.stdout.write(self.style.ERROR(f'Error sending verification email: {str(e)}'))
+
+    def _test_password_reset_email(self, test_email):
+        """Test sending a password reset email"""
+        self.stdout.write(self.style.SUCCESS('Testing password reset email sending...'))
+        
+        try:
+            recipient = test_email or settings.EMAIL_HOST_USER
+            
+            # Create a test reset token
+            test_token = uuid.uuid4()
+            
+            # Build the reset URL
+            reset_url = f"{settings.FRONTEND_URL}/auth/reset_password?token={test_token}"
+            
+            context = {
+                'user': {'first_name': 'Test User', 'email': recipient},
+                'reset_token': test_token,
+                'site_url': settings.FRONTEND_URL,
+                'reset_url': reset_url,
+            }
+            
+            result = send_email(
+                'Praxia Test Password Reset Email',
+                'password_reset',
+                context,
+                [recipient]
+            )
+            
+            if result:
+                self.stdout.write(self.style.SUCCESS(f'Password reset email sent successfully to {recipient}'))
+                self.stdout.write(self.style.SUCCESS(f'Using frontend URL: {settings.FRONTEND_URL}'))
+                self.stdout.write(self.style.SUCCESS(f'Reset URL: {reset_url}'))
+            else:
+                self.stdout.write(self.style.ERROR(f'Failed to send password reset email to {recipient}'))
+        except Exception as e:
+            self.stdout.write(self.style.ERROR(f'Error sending password reset email: {str(e)}'))
