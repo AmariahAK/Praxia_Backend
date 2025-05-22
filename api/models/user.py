@@ -38,7 +38,9 @@ class UserProfile(models.Model):
 def create_or_update_user_profile(sender, instance, created, **kwargs):
     """Create or update a UserProfile when a User is created or updated"""
     if created:
-        UserProfile.objects.create(user=instance)
+        # Check if profile already exists to prevent duplicate creation
+        if not hasattr(instance, 'profile'):
+            UserProfile.objects.create(user=instance)
     else:
         # Only save the profile if it exists
         try:

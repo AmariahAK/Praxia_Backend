@@ -1,7 +1,7 @@
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 from django.contrib.auth.models import User
-from .models import UserProfile, XRayAnalysis
+from .models import XRayAnalysis
 from .AI.praxia_model import PraxiaAI
 import json
 import logging
@@ -9,16 +9,7 @@ import logging
 # Create a logger instance
 logger = logging.getLogger(__name__)
 
-@receiver(post_save, sender=User)
-def create_user_profile(sender, instance, created, **kwargs):
-    """Create a UserProfile when a new User is created"""
-    if created:
-        UserProfile.objects.create(user=instance)
-
-@receiver(post_save, sender=User)
-def save_user_profile(sender, instance, **kwargs):
-    """Save the UserProfile when the User is saved"""
-    instance.profile.save()
+# Removed the duplicate UserProfile signals since they're already in models/user.py
 
 @receiver(post_save, sender=XRayAnalysis)
 def process_xray_analysis(sender, instance, created, **kwargs):
