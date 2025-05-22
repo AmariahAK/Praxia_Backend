@@ -61,6 +61,7 @@ class RegisterView(APIView):
 
 class EmailVerificationView(APIView):
     """View for email verification"""
+    authentication_classes = []  
     permission_classes = [permissions.AllowAny]
     
     def post(self, request):
@@ -113,15 +114,18 @@ class EmailVerificationView(APIView):
 
 class ResendVerificationEmailView(APIView):
     """View for resending verification email"""
+    authentication_classes = []  
     permission_classes = [permissions.AllowAny]
     
     def post(self, request):
         email = request.data.get('email')
         if not email:
+            logger.warning("Resend verification attempt without email")
             return Response({
                 'error': 'Email is required.'
             }, status=status.HTTP_400_BAD_REQUEST)
         
+        logger.info(f"Attempting to resend verification email to: {email}")
         try:
             user = User.objects.get(email=email)
             
