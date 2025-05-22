@@ -380,6 +380,7 @@ class PraxiaAI:
 def scheduled_health_check():
     """Scheduled health check to ensure all services are operational and gather latest data"""
     from ..circuit_breaker import check_circuit_breakers
+    from .praxia_model import PraxiaAI as PraxiaModelAI  # Import the correct class
     
     # Check if we already have a recent health check (less than 6 hours old)
     six_hours_ago = timezone.now() - timedelta(hours=6)
@@ -486,7 +487,8 @@ def scheduled_health_check():
     
     # Get latest health news
     try:
-        praxia = PraxiaAI()
+        # Use the PraxiaAI from praxia_model.py instead
+        praxia = PraxiaModelAI()
         news_articles = praxia._scrape_health_news(source='all', limit=5)
         external_data["health_news"] = news_articles
     except Exception as e:
@@ -499,7 +501,14 @@ def scheduled_health_check():
         research_data = {}
         
         for topic in research_topics:
-            research_data[topic] = praxia.get_medical_research(topic, limit=2)
+            try:
+                # Make sure to pass the query parameter
+                research_data[topic] = praxia.get_medical_research(query=topic, limit=2)
+            except Exception as e:
+                logger.error("Function call failed", function="get_medical_research", error=str(e))
+                logger.info("Using PubMed fallback", limit=2, query=topic)
+                from ..circuit_breaker import pubmed_fallback
+                research_data[topic] = pubmed_fallback(topic, 2)
             
         external_data["research_trends"] = research_data
     except Exception as e:
