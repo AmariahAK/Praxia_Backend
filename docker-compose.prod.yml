@@ -11,6 +11,7 @@ services:
     environment:
       - DEBUG=False
       - ENVIRONMENT=production
+      - SERVICE_NAME=web
     restart: always
     networks:
       - praxia-network
@@ -30,6 +31,7 @@ services:
       - ./.env.prod
     environment:
       - DEBUG=False
+      - SERVICE_NAME=celery
     depends_on:
       - web
       - redis
@@ -44,6 +46,7 @@ services:
       - ./.env.prod
     environment:
       - DEBUG=False
+      - SERVICE_NAME=celery-beat
     depends_on:
       - web
       - redis

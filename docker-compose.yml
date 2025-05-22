@@ -11,6 +11,7 @@ services:
       - ./.env
     environment:
       - ENVIRONMENT=development
+      - SERVICE_NAME=web
     depends_on:
       - redis
     restart: always
@@ -36,6 +37,7 @@ services:
       - ./.env
     depends_on:
       - redis
+      - web
     restart: always
     networks:
       - praxia-network

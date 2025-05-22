@@ -1,5 +1,12 @@
 #!/bin/bash
 
+# Add random delay to avoid migration race conditions
+if [ "$SERVICE_NAME" = "celery" ]; then
+    sleep 5
+elif [ "$SERVICE_NAME" = "celery-beat" ]; then
+    sleep 10
+fi
+
 # Check if ENVIRONMENT variable is set to 'production'
 if [ "$ENVIRONMENT" = "production" ]; then
     echo "Running in production mode with entrypoint.prod.sh and .env.prod"
