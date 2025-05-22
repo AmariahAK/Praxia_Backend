@@ -10,16 +10,20 @@ fi
 # Check if ENVIRONMENT variable is set to 'production'
 if [ "$ENVIRONMENT" = "production" ]; then
     echo "Running in production mode with entrypoint.prod.sh and .env.prod"
-    # Export all variables from .env.prod to environment
-    set -a
-    source /app/.env.prod
-    set +a
+    # Use grep to extract variable assignments and properly export them
+    grep -v '^#' /app/.env.prod | while IFS= read -r line; do
+        if [[ $line =~ ^[A-Za-z_][A-Za-z0-9_]*= ]]; then
+            export "$line"
+        fi
+    done
     exec /app/entrypoint.prod.sh "$@"
 else
     echo "Running in development mode with entrypoint.sh and .env"
-    # Export all variables from .env to environment
-    set -a
-    source /app/.env
-    set +a
+    # Use grep to extract variable assignments and properly export them
+    grep -v '^#' /app/.env | while IFS= read -r line; do
+        if [[ $line =~ ^[A-Za-z_][A-Za-z0-9_]*= ]]; then
+            export "$line"
+        fi
+    done
     exec /app/entrypoint.sh "$@"
 fi

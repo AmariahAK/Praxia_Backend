@@ -451,7 +451,10 @@ def scheduled_health_check():
     
     # Check Celery workers
     try:
-        insp = inspect()
+        from celery.app.control import Inspect
+        from praxia_backend.celery import app
+        
+        insp = Inspect(app=app)
         if not insp.ping():
             results["services"]["celery"] = "no_workers_online"
             results["status"] = "degraded"
