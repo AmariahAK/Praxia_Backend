@@ -1,11 +1,23 @@
 #!/bin/bash
 
 # Add random delay to avoid migration race conditions
-if [ "$SERVICE_NAME" = "celery" ]; then
-    sleep 5
-elif [ "$SERVICE_NAME" = "celery-beat" ]; then
+if [ "$SERVICE_NAME" = "web" ]; then
+    # Only web service should run migrations
+    SHOULD_MIGRATE=true
+    sleep 2
+elif [ "$SERVICE_NAME" = "celery" ]; then
+    SHOULD_MIGRATE=false
     sleep 10
+elif [ "$SERVICE_NAME" = "celery-beat" ]; then
+    SHOULD_MIGRATE=false
+    sleep 15
+else
+    # Default for any other service
+    SHOULD_MIGRATE=false
+    sleep 5
 fi
+
+export SHOULD_MIGRATE
 
 # Check if ENVIRONMENT variable is set to 'production'
 if [ "$ENVIRONMENT" = "production" ]; then

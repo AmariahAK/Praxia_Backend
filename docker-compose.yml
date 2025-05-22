@@ -35,6 +35,8 @@ services:
       - media_volume:/app/media
     env_file:
       - ./.env
+    environment:
+      - SERVICE_NAME=celery
     depends_on:
       - redis
       - web
@@ -50,6 +52,8 @@ services:
       - ./data:/app/data
     env_file:
       - ./.env
+    environment:
+      - SERVICE_NAME=celery-beat
     depends_on:
       - redis
     restart: always

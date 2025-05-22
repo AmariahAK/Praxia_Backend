@@ -10,9 +10,13 @@ else
   echo "Model weights already exist, skipping download."
 fi
 
-# Apply database migrations
-echo "Applying database migrations..."
-python manage.py migrate
+# Apply database migrations only if this service should migrate
+if [ "$SHOULD_MIGRATE" = "true" ]; then
+  echo "Applying database migrations..."
+  python manage.py migrate
+else
+  echo "Skipping database migrations for this service..."
+fi
 
 # Create superuser if needed
 echo "Creating superuser if needed..."
