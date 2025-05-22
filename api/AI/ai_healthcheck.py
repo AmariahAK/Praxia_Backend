@@ -505,7 +505,7 @@ def scheduled_health_check():
         
         for topic in research_topics:
             try:
-                # Make sure to pass the query parameter
+                # Make sure to use the instance method on the praxia object
                 research_data[topic] = praxia.get_medical_research(query=topic, limit=2)
             except Exception as e:
                 logger.error("Function call failed", function="get_medical_research", error=str(e))

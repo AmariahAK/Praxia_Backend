@@ -445,7 +445,6 @@ Your response must be valid JSON that can be parsed programmatically.
             logger.error("Error in X-ray analysis", error=str(e))
             return {"error": str(e), "message": "Unable to process X-ray at this time."}
     
-    @shared_task
     def get_medical_research(self, query, limit=5):
         """
         Retrieve relevant medical research from PubMed
