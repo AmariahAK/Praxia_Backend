@@ -258,13 +258,16 @@ class PraxiaAI:
     @shared_task
     @circuit_breaker_with_fallback(pubmed_breaker, pubmed_fallback)
     @cache_result(timeout=60*60*24, key_prefix='research')
-    def get_medical_research(self, query, limit=5):
+    def get_medical_research(query, limit=5):
         """
         Retrieve relevant medical research from PubMed
         """
         try:
+            # Create a PubMed client here instead of using self.pubmed_client
+            pubmed_client = pymed.PubMed(tool="PraxiaAI", email="contact@praxia.ai")
+        
             search_term = f"{query} AND (Review[ptyp] OR Clinical Trial[ptyp])"
-            results = self.pubmed_client.query(search_term, max_results=limit)
+            results = pubmed_client.query(search_term, max_results=limit)
             articles = [{
                 "title": article.title,
                 "authors": ", ".join([author['lastname'] + ' ' + author['firstname'][0] for author in article.authors]) if article.authors else "Unknown",
