@@ -75,22 +75,25 @@ class ChatMessageView(APIView):
         try:
             # Handle both multipart form data and JSON content
             if request.content_type and 'multipart/form-data' in request.content_type:
-                # Handle multipart form data (for file uploads)
                 xray_image = request.FILES.get('xray_image')
-                message_content = request.data.get('content', '')
+                message_content = request.data.get('content', '').strip()
             else:
-                # Handle JSON data
                 xray_image = None
-                message_content = request.data.get('content', '')
+                message_content = request.data.get('content', '').strip()
         
-            # Set a minimum message to prevent empty messages
-            if not message_content or message_content.strip() == '':
-                message_content = "Hello"
+            # Ensure we have valid content
+            if not message_content:
+                if xray_image:
+                    message_content = "Please analyze this X-ray image."
+                else:
+                    message_content = "Hello"
             
             # Clean up the message content to prevent parsing errors
             message_content = message_content.strip()
-            if message_content.endswith("'") and len(message_content) < 10:
-                message_content += " "  # Add a space to avoid empty separator error
+        
+            # Validate message content length and format
+            if len(message_content) < 2:
+                message_content = "Hello, I need help with my health."
             
             user_message_serializer = ChatMessageSerializer(data={
                 'role': 'user',
@@ -150,17 +153,21 @@ class ChatMessageView(APIView):
                     else:
                         ai_response = praxia.diagnose_symptoms(message_content, user_profile)
                 except Exception as e:
-                    logger.error("Error processing message", error=str(e))
-                    # Fallback response when there's an error
+                    logger.error("Error processing message", error=str(e), symptoms=message_content[:50])
+                    # Provide a more specific error response
                     ai_response = {
                         "diagnosis": {
-                            "conditions": ["Unable to process symptoms at this time"],
-                            "next_steps": ["Please try again with more specific symptoms"],
+                            "conditions": ["Unable to analyze symptoms at this time"],
+                            "next_steps": ["Please try rephrasing your symptoms", "Consider consulting with a healthcare professional"],
                             "urgent": [],
-                            "advice": "I apologize, but I couldn't properly analyze your message. Could you please rephrase or provide more details?",
-                            "clarification": ["Could you describe your symptoms in more detail?"]
+                            "advice": "I'm having trouble understanding your symptoms. Could you please provide more specific details about what you're experiencing?",
+                            "clarification": [
+                                "What specific symptoms are you experiencing?",
+                                "How long have you had these symptoms?",
+                                "Are there any triggers or patterns you've noticed?"
+                            ]
                         },
-                        "disclaimer": "This is an automated message due to a processing error. Please try again."
+                        "disclaimer": "This information is for educational purposes only and not a substitute for professional medical advice."
                     }
         
             if ai_response and isinstance(ai_response, dict):
@@ -173,16 +180,20 @@ class ChatMessageView(APIView):
                 # Update session title if it's a new session with generic title
                 if session.title == "New Chat" and len(session.messages.all()) <= 2:
                     praxia = PraxiaAI()
-                    topic_prompt = f"Based on this message, suggest a short (3-5 words) title for this conversation. Return ONLY the title without quotes or additional text: '{message_content}'"
                     try:
+                        # Create a safer topic generation prompt
+                        topic_prompt = f"Generate a short 3-5 word title for a medical conversation about: {message_content[:100]}. Respond with only the title, no quotes or extra text."
                         topic = praxia._call_together_ai(topic_prompt).strip()
                         topic = topic.replace('"', '').replace("'", "").strip()
-                        if topic and len(topic) > 0:
-                            session.title = topic[:255] 
+                        if topic and len(topic) > 0 and len(topic) < 100:
+                            session.title = topic[:50]  # Limit to 50 chars
                             session.save()
                             logger.info("Generated chat topic", topic=topic)
                     except Exception as e:
                         logger.error("Failed to generate topic", error=str(e))
+                        # Set a default meaningful title
+                        session.title = "Health Consultation"
+                        session.save()
         
             session.save()
             logger.info("Chat message processed", session_id=session_id, user=request.user.username)
@@ -192,19 +203,36 @@ class ChatMessageView(APIView):
             })
         except Exception as e:
             logger.error("Unexpected error processing chat message", error=str(e))
-            # Return a friendly error response
-            error_message = ChatMessage.objects.create(
-                session=session,
-                role='assistant',
-                content=json.dumps({
-                    "error": "processing_error",
-                    "message": "I apologize, but I encountered an error while processing your request. Please try again or rephrase your message."
-                })
-            )
-            return Response({
-                'user_message': ChatMessageSerializer(user_message).data if 'user_message' in locals() else None,
-                'ai_message': ChatMessageSerializer(error_message).data
-            })
+            # Return a more helpful error response
+            try:
+                if 'user_message' in locals():
+                    error_message = ChatMessage.objects.create(
+                        session=session,
+                        role='assistant',
+                        content=json.dumps({
+                            "diagnosis": {
+                                "conditions": ["System temporarily unavailable"],
+                                "next_steps": ["Please try again in a moment", "If the problem persists, contact support"],
+                                "urgent": [],
+                                "advice": "I'm experiencing a temporary issue. Please try rephrasing your question or try again in a moment.",
+                                "clarification": ["Could you try asking your question in a different way?"]
+                            },
+                            "disclaimer": "This is a system message due to a temporary technical issue."
+                        })
+                    )
+                    return Response({
+                        'user_message': ChatMessageSerializer(user_message).data,
+                        'ai_message': ChatMessageSerializer(error_message).data
+                    })
+                else:
+                    return Response({
+                        'error': 'Unable to process your message at this time. Please try again.'
+                    }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            except Exception as inner_e:
+                logger.error("Failed to create error response", error=str(inner_e))
+                return Response({
+                    'error': 'System temporarily unavailable. Please try again.'
+                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 class MedicalConsultationView(APIView):
     """View for medical consultations"""
     permission_classes = [permissions.IsAuthenticated]

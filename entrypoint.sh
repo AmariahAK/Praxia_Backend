@@ -121,6 +121,24 @@ fi
 echo "Running initial health check..."
 python manage.py shell -c "from api.AI.ai_healthcheck import startup_health_check; startup_health_check()" || echo "Health check failed, continuing..."
 
+# Celery Tasks
+echo "Waiting for Redis to be ready..."
+while ! nc -z redis 6379; do
+  sleep 0.1
+done
+echo "Redis is ready!"
+
+# Clear any existing Celery queues
+python -c "
+import redis
+try:
+    r = redis.Redis(host='redis', port=6379, db=1)
+    r.flushdb()
+    print('Cleared Celery broker database')
+except Exception as e:
+    print(f'Could not clear Celery database: {e}')
+"
+
 # Start server with Daphne
 echo "Starting Daphne server..."
 exec daphne -b 0.0.0.0 -p 8000 praxia_backend.asgi:application

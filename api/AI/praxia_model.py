@@ -186,7 +186,7 @@ class PraxiaAI:
             return "unspecified symptoms"
         
         # Clean the input
-        cleaned = symptoms.replace('<', '').replace('>', '')
+        cleaned = symptoms.replace('<', '').replace('>', '').strip()
         
         # Handle greetings and extract the actual symptoms
         greeting_phrases = ["hey praxia", "hi praxia", "hello", "greetings"]
@@ -202,19 +202,23 @@ class PraxiaAI:
         if not cleaned or len(cleaned.strip()) < 3:
             return "unspecified symptoms"
         
-
-        cleaned = cleaned.replace("'", "'")
+        # Fix quote handling to prevent empty separator errors
+        cleaned = cleaned.replace("'", "'").replace(""", '"').replace(""", '"')
         
-        if cleaned.strip().endswith("'") or cleaned.strip().endswith("'"):
-            cleaned = cleaned.strip() + " "
+        # Remove trailing quotes that might cause issues
+        cleaned = cleaned.rstrip("'\"")
         
-        # Handle sentence formatting
+        # Ensure we don't have empty strings that could cause separator errors
+        if not cleaned.strip():
+            return "unspecified symptoms"
+        
+        # Handle sentence formatting more safely
         if '.' in cleaned and not cleaned.endswith('.'):
             sentences = [s.strip() for s in cleaned.split('.') if s.strip()]
             if sentences:
                 return '. '.join(sentences) + '.'
         
-        return cleaned
+        return cleaned.strip()
 
     def diagnose_symptoms(self, symptoms, user_profile=None):
         try:
@@ -878,43 +882,58 @@ Summary:"""
 
     def _scrape_mayo_news(self, limit=3):
         try:
-            url = "https://www.mayoclinic.org/news"
-            response = requests.get(url, timeout=10)
+            # Use a different Mayo Clinic endpoint that's more accessible
+            url = "https://www.mayoclinic.org/about-mayo-clinic/news"
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            }
+            response = requests.get(url, timeout=10, headers=headers)
             response.raise_for_status()
             soup = BeautifulSoup(response.text, 'html.parser')
-            news_items = soup.select('article.feature')
+            
+            # Try multiple selectors for news items
+            news_items = soup.select('article') or soup.select('.content-item') or soup.select('.news-item')
             articles = []
             
             for item in news_items[:limit]:
                 try:
-                    title_elem = item.select_one('h3')
-                    title = title_elem.text.strip() if title_elem else "No title"
+                    title_elem = item.select_one('h2, h3, .title, .headline')
+                    title = title_elem.text.strip() if title_elem else "Health News Update"
+                    
                     link_elem = item.select_one('a')
-                    url = "https://www.mayoclinic.org" + link_elem['href'] if link_elem and 'href' in link_elem.attrs else "#"
-                    date_elem = item.select_one('time')
-                    published_date = date_elem.text.strip() if date_elem else None
-                    img_elem = item.select_one('img')
-                    image_url = img_elem['src'] if img_elem and 'src' in img_elem.attrs else None
+                    url = link_elem['href'] if link_elem and 'href' in link_elem.attrs else "#"
+                    if url.startswith('/'):
+                        url = "https://www.mayoclinic.org" + url
                     
                     # Get some content text if available
-                    content_elem = item.select_one('p')
-                    content = content_elem.text.strip() if content_elem else "Content not available"
+                    content_elem = item.select_one('p, .summary, .excerpt')
+                    content = content_elem.text.strip() if content_elem else "Mayo Clinic health information"
                     
                     articles.append({
                         "title": title,
                         "source": "Mayo Clinic",
                         "url": url,
                         "content": content,
-                        "image_url": image_url,
-                        "published_date": published_date
+                        "image_url": None,
+                        "published_date": None
                     })
                 except Exception as e:
                     logger.warning(f"Error processing Mayo Clinic news item: {str(e)}")
                     continue
             
             return articles
-        except Exception as e:
+        except requests.exceptions.RequestException as e:
             logger.error(f"Error scraping Mayo Clinic news: {str(e)}")
+            # Return fallback Mayo Clinic content
+            return [{
+                "title": "Mayo Clinic Health Information",
+                "source": "Mayo Clinic",
+                "url": "https://www.mayoclinic.org/",
+                "content": "Access comprehensive health information and medical expertise from Mayo Clinic.",
+                "published_date": datetime.now().strftime("%Y-%m-%d")
+            }]
+        except Exception as e:
+            logger.error(f"Unexpected error scraping Mayo Clinic: {str(e)}")
             return []
 
 # -------------------- Celery Task Wrappers --------------------
