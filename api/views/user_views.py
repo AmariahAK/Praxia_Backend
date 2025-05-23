@@ -59,3 +59,21 @@ class ConfirmGenderView(APIView):
             "detail": "Gender has been confirmed and cannot be changed in the future.",
             "profile": serializer.data
         })
+
+from rest_framework.authtoken.models import Token
+
+class LogoutView(APIView):
+    """View for user logout"""
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def post(self, request):
+        """Log out the user by deleting their auth token"""
+        try:
+            # Delete the user's auth token
+            Token.objects.filter(user=request.user).delete()
+            return Response({"detail": "Successfully logged out."})
+        except Exception as e:
+            return Response(
+                {"detail": "An error occurred during logout."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )

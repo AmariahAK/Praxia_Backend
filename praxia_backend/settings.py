@@ -272,6 +272,11 @@ REST_FRAMEWORK = {
     'DEFAULT_FILTER_BACKENDS': [
         'django_filters.rest_framework.DjangoFilterBackend',
     ],
+    'DEFAULT_PARSER_CLASSES': [
+        'rest_framework.parsers.JSONParser',
+        'rest_framework.parsers.FormParser',
+        'rest_framework.parsers.MultiPartParser',
+    ],
     'DEFAULT_THROTTLE_RATES': {
         'anon': config('REST_FRAMEWORK_DEFAULT_THROTTLE_RATES_ANON'),
         'user': config('REST_FRAMEWORK_DEFAULT_THROTTLE_RATES_USER'),

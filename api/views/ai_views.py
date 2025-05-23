@@ -10,7 +10,7 @@ from ..AI.praxia_model import (
     scrape_health_news,
 )
 from rest_framework.views import APIView
-from rest_framework.parsers import MultiPartParser, FormParser
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from django.shortcuts import get_object_or_404
 from django_filters.rest_framework import DjangoFilterBackend
 from ..models import ChatSession, ChatMessage, MedicalConsultation, XRayAnalysis, ResearchQuery, HealthNews
@@ -58,7 +58,7 @@ class ChatMessageView(APIView):
     """View for creating and retrieving chat messages"""
     permission_classes = [permissions.IsAuthenticated]
     throttle_classes = [AIChatRateThrottle]
-    parser_classes = [MultiPartParser, FormParser]  # Add this to support file uploads
+    parser_classes = [MultiPartParser, FormParser, JSONParser] 
     
     def get(self, request, session_id):
         """Get all messages for a chat session"""
@@ -72,9 +72,15 @@ class ChatMessageView(APIView):
         """Create a new message and get AI response"""
         session = get_object_or_404(ChatSession, id=session_id, user=request.user)
         
-        # Check if there's an image upload
-        xray_image = request.FILES.get('xray_image')
-        message_content = request.data.get('content', '')
+        # Handle both multipart form data and JSON content
+        if request.content_type and 'multipart/form-data' in request.content_type:
+            # Handle multipart form data (for file uploads)
+            xray_image = request.FILES.get('xray_image')
+            message_content = request.data.get('content', '')
+        else:
+            # Handle JSON data
+            xray_image = None
+            message_content = request.data.get('content', '')
         
         user_message_serializer = ChatMessageSerializer(data={
             'role': 'user',
