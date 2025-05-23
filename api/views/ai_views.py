@@ -73,96 +73,133 @@ class ChatMessageView(APIView):
         session = get_object_or_404(ChatSession, id=session_id, user=request.user)
         
         # Handle both multipart form data and JSON content
-        if request.content_type and 'multipart/form-data' in request.content_type:
-            # Handle multipart form data (for file uploads)
-            xray_image = request.FILES.get('xray_image')
-            message_content = request.data.get('content', '')
-        else:
-            # Handle JSON data
-            xray_image = None
-            message_content = request.data.get('content', '')
-        
-        user_message_serializer = ChatMessageSerializer(data={
-            'role': 'user',
-            'content': message_content
-        })
-        
-        if not user_message_serializer.is_valid():
-            logger.error("Invalid user message", errors=user_message_serializer.errors)
-            return Response(user_message_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-        
-        user_message = user_message_serializer.save(session=session)
-        
-        user_profile = {
-            'gender': request.user.profile.gender,
-            'age': request.user.profile.age,
-            'weight': request.user.profile.weight,
-            'height': request.user.profile.height,
-            'country': request.user.profile.country,
-            'allergies': request.user.profile.allergies
-        }
-        
-        ai_response = None
-        
-        # If there's an X-ray image, process it
-        if xray_image:
-            # Create an XRayAnalysis object to track the analysis
-            xray = XRayAnalysis.objects.create(
-                user=request.user,
-                image=xray_image,
-                analysis_result="Processing...",
-                detected_conditions={},
-                confidence_scores={}
-            )
-            
-            # Start asynchronous analysis
-            analyze_xray_task.delay(xray.id, xray.image.path)
-            
-            # Create an initial AI response indicating the analysis is in progress
-            ai_response = {
-                "message": "I'm analyzing your X-ray image. This may take a minute or two.",
-                "xray_analysis_id": xray.id,
-                "status": "processing"
-            }
-            
-            logger.info("X-ray analysis queued from chat", user=request.user.username, xray_id=xray.id)
-        else:
-            # Regular text message processing
-            praxia = PraxiaAI()
-            if "analyze my diet" in message_content.lower() or "diet analysis" in message_content.lower():
-                ai_response = praxia.analyze_diet(message_content, user_profile)
-            elif "medication" in message_content.lower() or "drug interaction" in message_content.lower():
-                ai_response = praxia.analyze_medication(message_content, user_profile)
+        try:
+            if request.content_type and 'multipart/form-data' in request.content_type:
+                # Handle multipart form data (for file uploads)
+                xray_image = request.FILES.get('xray_image')
+                message_content = request.data.get('content', '')
             else:
-                ai_response = praxia.diagnose_symptoms(message_content, user_profile)
+                # Handle JSON data
+                xray_image = None
+                message_content = request.data.get('content', '')
         
-        if ai_response and isinstance(ai_response, dict):
-            ai_message = ChatMessage.objects.create(
+            if not message_content or message_content.strip() == '':
+                message_content = "Hello"
+            
+            # Validate that the message isn't just a fragment ending with an apostrophe
+            if message_content.strip().endswith("'") and len(message_content.strip()) < 10:
+                message_content += " "  # Add a space to avoid empty separator error
+            
+            user_message_serializer = ChatMessageSerializer(data={
+                'role': 'user',
+                'content': message_content
+            })
+        
+            if not user_message_serializer.is_valid():
+                logger.error("Invalid user message", errors=user_message_serializer.errors)
+                return Response(user_message_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        
+            user_message = user_message_serializer.save(session=session)
+        
+            user_profile = {
+                'gender': request.user.profile.gender,
+                'age': request.user.profile.age,
+                'weight': request.user.profile.weight,
+                'height': request.user.profile.height,
+                'country': request.user.profile.country,
+                'allergies': request.user.profile.allergies
+            }
+        
+            ai_response = None
+        
+            # If there's an X-ray image, process it
+            if xray_image:
+                # Create an XRayAnalysis object to track the analysis
+                xray = XRayAnalysis.objects.create(
+                    user=request.user,
+                    image=xray_image,
+                    analysis_result="Processing...",
+                    detected_conditions={},
+                    confidence_scores={}
+                )
+            
+                # Start asynchronous analysis
+                analyze_xray_task.delay(xray.id, xray.image.path)
+            
+                # Create an initial AI response indicating the analysis is in progress
+                ai_response = {
+                    "message": "I'm analyzing your X-ray image. This may take a minute or two.",
+                    "xray_analysis_id": xray.id,
+                    "status": "processing"
+                }
+            
+                logger.info("X-ray analysis queued from chat", user=request.user.username, xray_id=xray.id)
+            else:
+                # Regular text message processing
+                praxia = PraxiaAI()
+                try:
+                    if "analyze my diet" in message_content.lower() or "diet analysis" in message_content.lower():
+                        ai_response = praxia.analyze_diet(message_content, user_profile)
+                    elif "medication" in message_content.lower() or "drug interaction" in message_content.lower():
+                        ai_response = praxia.analyze_medication(message_content, user_profile)
+                    else:
+                        ai_response = praxia.diagnose_symptoms(message_content, user_profile)
+                except Exception as e:
+                    logger.error("Error processing message", error=str(e))
+                    # Fallback response when there's an error
+                    ai_response = {
+                        "diagnosis": {
+                            "conditions": ["Unable to process symptoms at this time"],
+                            "next_steps": ["Please try again with more specific symptoms"],
+                            "urgent": [],
+                            "advice": "I apologize, but I couldn't properly analyze your message. Could you please rephrase or provide more details?",
+                            "clarification": ["Could you describe your symptoms in more detail?"]
+                        },
+                        "disclaimer": "This is an automated message due to a processing error. Please try again."
+                    }
+        
+            if ai_response and isinstance(ai_response, dict):
+                ai_message = ChatMessage.objects.create(
+                    session=session,
+                    role='assistant',
+                    content=json.dumps(ai_response)  
+                )
+            
+                # Update session title if it's a new session with generic title
+                if session.title == "New Chat" and len(session.messages.all()) <= 2:
+                    praxia = PraxiaAI()
+                    topic_prompt = f"Based on this message, suggest a short (3-5 words) title for this conversation. Return ONLY the title without quotes or additional text: '{message_content}'"
+                    try:
+                        topic = praxia._call_together_ai(topic_prompt).strip()
+                        topic = topic.replace('"', '').replace("'", "").strip()
+                        if topic and len(topic) > 0:
+                            session.title = topic[:255] 
+                            session.save()
+                            logger.info("Generated chat topic", topic=topic)
+                    except Exception as e:
+                        logger.error("Failed to generate topic", error=str(e))
+        
+            session.save()
+            logger.info("Chat message processed", session_id=session_id, user=request.user.username)
+            return Response({
+                'user_message': ChatMessageSerializer(user_message).data,
+                'ai_message': ChatMessageSerializer(ai_message).data
+            })
+        except Exception as e:
+            logger.error("Unexpected error processing chat message", error=str(e))
+            # Return a friendly error response
+            error_message = ChatMessage.objects.create(
                 session=session,
                 role='assistant',
-                content=json.dumps(ai_response)  
+                content=json.dumps({
+                    "error": "processing_error",
+                    "message": "I apologize, but I encountered an error while processing your request. Please try again or rephrase your message."
+                })
             )
-            
-            # Update session title if it's a new session with generic title
-            if session.title == "New Chat" and len(session.messages.all()) <= 2:
-                praxia = PraxiaAI()
-                topic_prompt = f"Based on this message, suggest a short (3-5 words) title for this conversation. Return ONLY the title without quotes or additional text: '{message_content}'"
-                try:
-                    topic = praxia._call_together_ai(topic_prompt).strip()
-                    topic = topic.replace('"', '').replace("'", "").strip()
-                    if topic and len(topic) > 0:
-                        session.title = topic[:255] 
-                        session.save()
-                        logger.info("Generated chat topic", topic=topic)
-                except Exception as e:
-                    logger.error("Failed to generate topic", error=str(e))
-        
-        session.save()
-        logger.info("Chat message processed", session_id=session_id, user=request.user.username)
-        return Response({
-            'user_message': ChatMessageSerializer(user_message).data,
-            'ai_message': ChatMessageSerializer(ai_message).data
-        })
+            return Response({
+                'user_message': ChatMessageSerializer(user_message).data if 'user_message' in locals() else None,
+                'ai_message': ChatMessageSerializer(error_message).data
+            })
 class MedicalConsultationView(APIView):
     """View for medical consultations"""
     permission_classes = [permissions.IsAuthenticated]

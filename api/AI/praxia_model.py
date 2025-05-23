@@ -67,19 +67,18 @@ class PraxiaAI:
             if fixed_model_path and os.path.exists(fixed_model_path):
                 logger.info(f"Loading fixed DenseNet model from {fixed_model_path}")
                 
-                # Add DenseNet to safe globals list
+                # Add DenseNet and Sequential to safe globals list
                 from torch.serialization import add_safe_globals
                 import torchvision.models.densenet
-                add_safe_globals([torchvision.models.densenet.DenseNet])
+                import torch.nn.modules.container
+                add_safe_globals([
+                    torchvision.models.densenet.DenseNet,
+                    torch.nn.modules.container.Sequential
+                ])
                 
-                # Try loading with weights_only=True first (safer)
-                try:
-                    self.densenet_model = torch.load(fixed_model_path, map_location=self.device, weights_only=True)
-                except Exception as e:
-                    logger.warning(f"Failed to load with weights_only=True: {str(e)}")
-                    # Fall back to weights_only=False as this is our own model
-                    self.densenet_model = torch.load(fixed_model_path, map_location=self.device, weights_only=False)
-                    logger.info("Loaded model with weights_only=False")
+                # Try loading with weights_only=False for compatibility
+                self.densenet_model = torch.load(fixed_model_path, map_location=self.device, weights_only=False)
+                logger.info("Loaded model successfully")
                 
                 self.densenet_model.eval()
                 logger.info("Fixed DenseNet model loaded successfully")
@@ -202,6 +201,8 @@ class PraxiaAI:
         # Make sure we have valid content
         if not cleaned or len(cleaned.strip()) < 3:
             return "unspecified symptoms"
+        
+        cleaned = cleaned.replace("'", "'")  
         
         # Handle sentence formatting
         if '.' in cleaned and not cleaned.endswith('.'):

@@ -29,11 +29,15 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-
-RUN pip install --no-cache-dir torch torchvision
+# Install PyTorch with CPU-only support for reliability
+RUN pip install --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cpu
 
 # Copy project
 COPY . .
+
+# Add explicit permissions and fix module access
+RUN mkdir -p /app/data/models
+RUN touch /app/data/error.txt && chmod 666 /app/data/error.txt
 
 # Make entrypoint scripts executable
 RUN chmod +x /app/entrypoint.sh

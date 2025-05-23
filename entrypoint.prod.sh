@@ -41,7 +41,14 @@ else
     # Fix the model for our architecture if not already fixed
     if [ ! -f "/app/data/models/densenet_xray_fixed.pth" ]; then
       echo "Fixing model architecture..."
-      python -c "from api.utils.model_fix import fix_densenet_model; fix_densenet_model()"
+      python -c "
+import torch.serialization
+from torch.serialization import add_safe_globals
+import torch.nn.modules.container
+add_safe_globals([torch.nn.modules.container.Sequential])
+from api.utils.model_fix import fix_densenet_model
+fix_densenet_model()
+"
     fi
   fi
 fi
