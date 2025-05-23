@@ -66,7 +66,21 @@ class PraxiaAI:
             
             if fixed_model_path and os.path.exists(fixed_model_path):
                 logger.info(f"Loading fixed DenseNet model from {fixed_model_path}")
-                self.densenet_model = torch.load(fixed_model_path, map_location=self.device)
+                
+                # Add DenseNet to safe globals list
+                from torch.serialization import add_safe_globals
+                import torchvision.models.densenet
+                add_safe_globals([torchvision.models.densenet.DenseNet])
+                
+                # Try loading with weights_only=True first (safer)
+                try:
+                    self.densenet_model = torch.load(fixed_model_path, map_location=self.device, weights_only=True)
+                except Exception as e:
+                    logger.warning(f"Failed to load with weights_only=True: {str(e)}")
+                    # Fall back to weights_only=False as this is our own model
+                    self.densenet_model = torch.load(fixed_model_path, map_location=self.device, weights_only=False)
+                    logger.info("Loaded model with weights_only=False")
+                
                 self.densenet_model.eval()
                 logger.info("Fixed DenseNet model loaded successfully")
                 return
@@ -94,15 +108,25 @@ class PraxiaAI:
                 self.densenet_model = None
                 return
             
-            # Try to load the model
+            # Try to load the model with the safe globals approach
             try:
-                # Fix for OrderedDict issue - check the type of loaded object
-                loaded_obj = torch.load(densenet_path, map_location=self.device)
+                # Add DenseNet to safe globals list
+                from torch.serialization import add_safe_globals
+                import torchvision.models.densenet
+                add_safe_globals([torchvision.models.densenet.DenseNet])
+                
+                # Try with weights_only=True first
+                try:
+                    loaded_obj = torch.load(densenet_path, map_location=self.device, weights_only=True)
+                except Exception as e:
+                    logger.warning(f"Failed to load with weights_only=True: {str(e)}")
+                    # Fall back to weights_only=False if necessary
+                    loaded_obj = torch.load(densenet_path, map_location=self.device, weights_only=False)
                 
                 # If it's an OrderedDict, it's state_dict, need to create model first
                 if isinstance(loaded_obj, collections.OrderedDict):
                     from torchvision.models import densenet121
-                    model = densenet121(pretrained=False)
+                    model = densenet121(weights=None)
                     num_ftrs = model.classifier.in_features
                     model.classifier = torch.nn.Linear(num_ftrs, 3)
                     model.load_state_dict(loaded_obj)
@@ -119,7 +143,7 @@ class PraxiaAI:
                 # Try alternative loading method
                 try:
                     from torchvision.models import densenet121
-                    model = densenet121(pretrained=False)
+                    model = densenet121(weights=None)
                     num_ftrs = model.classifier.in_features
                     model.classifier = torch.nn.Linear(num_ftrs, 3)
                     self.densenet_model = model

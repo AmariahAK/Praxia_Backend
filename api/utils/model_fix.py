@@ -2,6 +2,8 @@ import os
 import torch
 import logging
 from torchvision.models import densenet121
+import torchvision.models.densenet
+from torch.serialization import add_safe_globals
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +21,7 @@ def fix_densenet_model():
         return fixed_model_path
     
     try:
-        # Create a new model with the correct architecture - FIX THE WEIGHTS PARAMETER
+        # Create a new model with the correct architecture
         logger.info("Creating new DenseNet model with correct architecture...")
         new_model = densenet121(weights=None)  
         
@@ -36,7 +38,17 @@ def fix_densenet_model():
         if os.path.exists(model_path) and os.path.getsize(model_path) > 1000000:
             logger.info("Attempting to adapt weights from existing model...")
             try:
-                state_dict = torch.load(model_path, map_location='cpu')
+                # Add DenseNet to safe globals before loading the model
+                add_safe_globals([torchvision.models.densenet.DenseNet])
+                
+                # Try first with weights_only=True (safer)
+                try:
+                    state_dict = torch.load(model_path, map_location='cpu', weights_only=True)
+                except Exception as e:
+                    logger.warning(f"Failed to load with weights_only=True: {str(e)}")
+                    # Fall back to weights_only=False if needed and if model is from trusted source
+                    state_dict = torch.load(model_path, map_location='cpu', weights_only=False)
+                    logger.info("Successfully loaded model with weights_only=False")
                 
                 if not isinstance(state_dict, dict):
                     state_dict = state_dict.state_dict()
