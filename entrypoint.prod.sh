@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# Set up error handling
+set -e
+
 # Download model weights if they don't exist
 echo "Checking for DenseNet121 model weights..."
 if [ ! -f "/app/data/models/densenet_xray.pth" ]; then
@@ -7,19 +10,25 @@ if [ ! -f "/app/data/models/densenet_xray.pth" ]; then
   # Try up to 3 times to download the model
   for i in {1..3}; do
     echo "Attempt $i to download model weights..."
-    python -m api.utils.download_model && break || echo "Download failed, retrying..."
-    sleep 5
+    python -m api.utils.download_model && break || {
+      echo "Download failed, retrying..."
+      sleep 10
+    }
   done
   
   if [ ! -f "/app/data/models/densenet_xray.pth" ]; then
     echo "Warning: Failed to download model weights after multiple attempts."
     # Create a placeholder file to prevent repeated download attempts
     touch /app/data/models/densenet_xray.pth.failed
+    echo "Will attempt to run without AI model..."
   else
     echo "Model weights downloaded successfully!"
+    echo "SUCCESS: $(date)" > /app/data/models/download_success_log.txt
+    ls -la /app/data/models/
   fi
 else
-  echo "Model weights already exist, skipping download."
+  echo "Model weights already exist at /app/data/models/densenet_xray.pth"
+  echo "File size: $(ls -lh /app/data/models/densenet_xray.pth | awk '{print $5}')"
 fi
 
 # Apply database migrations only if this service should migrate

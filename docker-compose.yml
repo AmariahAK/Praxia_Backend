@@ -5,7 +5,7 @@ services:
       - ./:/app:delegated
       - static_volume:/app/staticfiles
       - media_volume:/app/media
-      - model_volume:/app/data/models
+      - model_volume:/app/data/models:delegated
     ports:
       - "8000:8000"
     env_file:
@@ -38,9 +38,9 @@ services:
     command: celery -A praxia_backend worker -l INFO
     volumes:
       - ./:/app:delegated
-      - ./data:/app/data
+      - ./data:/app/data:delegated
       - media_volume:/app/media
-      - model_volume:/app/data/models
+      - model_volume:/app/data/models:delegated
     env_file:
       - ./.env
     environment:
@@ -81,7 +81,7 @@ services:
     ports:
       - "8888:8888"
     volumes:
-      - model_volume:/app/data/models
+      - model_volume:/app/data/models:delegated
     networks:
       - praxia-network
     shm_size: "2g"
@@ -159,17 +159,13 @@ services:
       - /var/run:/var/run:ro
       - /sys:/sys:ro
       - /var/lib/docker/:/var/lib/docker:ro
-      - /dev/disk/:/dev/disk:ro
-      - /etc/machine-id:/etc/machine-id:ro
     restart: always
     networks:
       - praxia-network
-    privileged: true
-    devices:
-      - /dev/kmsg:/dev/kmsg
     command:
       - '--docker_only=true'
       - '--disable_metrics=disk,diskIO,network,tcp,udp,percpu,sched,process'
+      - '--housekeeping_interval=30s'
 
   redis-exporter:
     image: oliver006/redis_exporter

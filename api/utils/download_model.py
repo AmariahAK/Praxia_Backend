@@ -2,6 +2,7 @@ import os
 import logging
 import torch
 import time
+import requests
 from pathlib import Path
 
 # Configure logging
@@ -21,29 +22,20 @@ def download_and_setup_weights():
             logger.info(f"Model file already exists at {target_path}")
             return
             
-        # Try to import torchxrayvision, if it fails, install it
-        try:
-            import torchxrayvision as xrv
-        except ImportError:
-            logger.info("torchxrayvision not found, installing...")
-            import subprocess
-            subprocess.check_call(["pip", "install", "torchxrayvision"])
-            import torchxrayvision as xrv
-        
-        # Load the pre-trained DenseNet model (triggers download)
-        logger.info("Downloading DenseNet121 weights...")
-        
         # Create a simple model with the right architecture
+        logger.info("Creating DenseNet121 model...")
         from torchvision.models import densenet121
-        model = densenet121(pretrained=False)
+        model = densenet121(pretrained=True)  
         
-        # Modify the model for our specific task (3 output classes)
         num_ftrs = model.classifier.in_features
-        model.classifier = torch.nn.Linear(num_ftrs, 3)  # 3 classes: fracture, tumor, pneumonia
+        model.classifier = torch.nn.Linear(num_ftrs, 3) 
         
         # Save the model
         torch.save(model, target_path)
         logger.info(f"Model saved to: {target_path}")
+        
+        # Create a success marker file
+        Path(os.path.join(target_dir, "download_success.txt")).write_text("Model downloaded successfully")
         
     except Exception as e:
         logger.error(f"Error downloading weights: {str(e)}")
