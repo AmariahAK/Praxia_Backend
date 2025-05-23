@@ -1,5 +1,5 @@
 from django.core.management.base import BaseCommand
-from api.utils.mail_serviceimport send_verification_email, send_email
+from api.utils.mail_service import send_verification_email, send_email
 from django.contrib.auth.models import User
 from django.conf import settings
 import uuid

@@ -5,7 +5,7 @@ set -e
 
 # Download model weights if they don't exist
 echo "Checking for DenseNet121 model weights..."
-if [ ! -f "/app/data/models/densenet_xray.pth" ]; then
+if [ ! -f "/app/data/models/densenet_xray.pth" ] && [ ! -f "/app/data/models/densenet_xray_fixed.pth" ]; then
   echo "Downloading DenseNet121 model weights..."
   # Try up to 3 times to download the model
   for i in {1..3}; do
@@ -25,10 +25,25 @@ if [ ! -f "/app/data/models/densenet_xray.pth" ]; then
     echo "Model weights downloaded successfully!"
     echo "SUCCESS: $(date)" > /app/data/models/download_success_log.txt
     ls -la /app/data/models/
+    
+    # Fix the model for our architecture
+    echo "Fixing model architecture..."
+    python -c "from api.utils.model_fix import fix_densenet_model; fix_densenet_model()"
   fi
 else
-  echo "Model weights already exist at /app/data/models/densenet_xray.pth"
-  echo "File size: $(ls -lh /app/data/models/densenet_xray.pth | awk '{print $5}')"
+  if [ -f "/app/data/models/densenet_xray_fixed.pth" ]; then
+    echo "Fixed model weights already exist at /app/data/models/densenet_xray_fixed.pth"
+    echo "File size: $(ls -lh /app/data/models/densenet_xray_fixed.pth | awk '{print $5}')"
+  elif [ -f "/app/data/models/densenet_xray.pth" ]; then
+    echo "Model weights already exist at /app/data/models/densenet_xray.pth"
+    echo "File size: $(ls -lh /app/data/models/densenet_xray.pth | awk '{print $5}')"
+    
+    # Fix the model for our architecture if not already fixed
+    if [ ! -f "/app/data/models/densenet_xray_fixed.pth" ]; then
+      echo "Fixing model architecture..."
+      python -c "from api.utils.model_fix import fix_densenet_model; fix_densenet_model()"
+    fi
+  fi
 fi
 
 # Apply database migrations only if this service should migrate

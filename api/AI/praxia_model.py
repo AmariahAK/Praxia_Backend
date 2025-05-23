@@ -53,7 +53,18 @@ class PraxiaAI:
 
     def _initialize_xray_model(self):
         try:
-            # First check if we have a model file
+            # First try to use a fixed model if available
+            from ..utils.model_fix import fix_densenet_model
+            fixed_model_path = fix_densenet_model()
+            
+            if fixed_model_path and os.path.exists(fixed_model_path):
+                logger.info(f"Loading fixed DenseNet model from {fixed_model_path}")
+                self.densenet_model = torch.load(fixed_model_path, map_location=self.device)
+                self.densenet_model.eval()
+                logger.info("Fixed DenseNet model loaded successfully")
+                return
+            
+            # If fixed model not available, try original approach
             densenet_path = os.path.join(settings.BASE_DIR, 'data', 'models', 'densenet_xray.pth')
             if not os.path.exists(densenet_path):
                 logger.warning("DenseNet model weights not found at %s, will use fallback methods", densenet_path)
@@ -148,9 +159,26 @@ class PraxiaAI:
         # Clean the input
         cleaned = symptoms.replace('<', '').replace('>', '')
         
+        # Handle greetings and extract the actual symptoms
+        greeting_phrases = ["hey praxia", "hi praxia", "hello", "greetings"]
+        lower_symptoms = cleaned.lower()
+        
+        for phrase in greeting_phrases:
+            if lower_symptoms.startswith(phrase):
+                # Remove greeting and any separators like commas
+                cleaned = cleaned[len(phrase):].lstrip(" ,.;:!?")
+                break
+        
+        # Make sure we have valid content
+        if not cleaned or len(cleaned.strip()) < 3:
+            return "unspecified symptoms"
+        
+        # Handle sentence formatting
         if '.' in cleaned and not cleaned.endswith('.'):
+            # Make sure we don't have empty segments when splitting
             sentences = [s.strip() for s in cleaned.split('.') if s.strip()]
-            return '. '.join(sentences) + '.'
+            if sentences:
+                return '. '.join(sentences) + '.'
         
         return cleaned
 

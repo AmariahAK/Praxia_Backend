@@ -4,7 +4,7 @@ import torch
 import time
 import requests
 from pathlib import Path
-from torchvision.models import densenet121, DenseNet121_Weights
+from torchvision.models import densenet121
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -23,26 +23,27 @@ def download_and_setup_weights():
             logger.info(f"Model file already exists at {target_path}")
             return
             
-        # Create a simple model with the right architecture using the updated API
+        # Create a simple model with the right architecture
         logger.info("Creating DenseNet121 model...")
         
         try:
-            # Use the DEFAULT weights (previously 'pretrained=True')
-            model = densenet121(weights=DenseNet121_Weights.DEFAULT)
+            # Initialize with no pretrained weights to ensure architecture compatibility
+            model = densenet121(pretrained=False)
+            
+            # Ensure input layer can handle RGB (3-channel) images
+            num_ftrs = model.classifier.in_features
+            model.classifier = torch.nn.Linear(num_ftrs, 3)  # Our output has 3 classes
+            
+            # Save the model
+            torch.save(model, target_path)
+            logger.info(f"Model saved to: {target_path}")
+            
+            # Create a success marker file
+            Path(os.path.join(target_dir, "download_success.txt")).write_text("Model downloaded successfully")
+            
         except Exception as e:
-            # Fallback to downloading without weights if there's an issue
-            logger.warning(f"Error downloading pretrained weights: {str(e)}. Creating model without pretrained weights.")
-            model = densenet121(weights=None)
-        
-        num_ftrs = model.classifier.in_features
-        model.classifier = torch.nn.Linear(num_ftrs, 3) 
-        
-        # Save the model
-        torch.save(model, target_path)
-        logger.info(f"Model saved to: {target_path}")
-        
-        # Create a success marker file
-        Path(os.path.join(target_dir, "download_success.txt")).write_text("Model downloaded successfully")
+            logger.error(f"Error creating model: {str(e)}")
+            raise
         
     except KeyboardInterrupt:
         logger.error("Download interrupted by user")
