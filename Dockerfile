@@ -5,13 +5,18 @@ ENV PYTHONDONTWRITEBYTECODE 1
 ENV PYTHONUNBUFFERED 1
 ENV BASE_DIR /app
 
-# Install system dependencies (removed postgresql-client)
+# Install system dependencies (including libraries needed for PyTorch)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     netcat-traditional \
     gcc \
     g++ \
     build-essential \
     libc6-dev \
+    libgl1-mesa-glx \
+    libglib2.0-0 \
+    libsm6 \
+    libxext6 \
+    libxrender-dev \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 

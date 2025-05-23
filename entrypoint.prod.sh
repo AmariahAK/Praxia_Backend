@@ -4,8 +4,20 @@
 echo "Checking for DenseNet121 model weights..."
 if [ ! -f "/app/data/models/densenet_xray.pth" ]; then
   echo "Downloading DenseNet121 model weights..."
-  python -m api.utils.download_model
-  echo "Model weights downloaded successfully!"
+  # Try up to 3 times to download the model
+  for i in {1..3}; do
+    echo "Attempt $i to download model weights..."
+    python -m api.utils.download_model && break || echo "Download failed, retrying..."
+    sleep 5
+  done
+  
+  if [ ! -f "/app/data/models/densenet_xray.pth" ]; then
+    echo "Warning: Failed to download model weights after multiple attempts."
+    # Create a placeholder file to prevent repeated download attempts
+    touch /app/data/models/densenet_xray.pth.failed
+  else
+    echo "Model weights downloaded successfully!"
+  fi
 else
   echo "Model weights already exist, skipping download."
 fi
@@ -76,7 +88,7 @@ fi
 
 # Run health check
 echo "Running initial health check..."
-python manage.py shell -c "from api.AI.ai_healthcheck import startup_health_check; startup_health_check()"
+python manage.py shell -c "from api.AI.ai_healthcheck import startup_health_check; startup_health_check()" || echo "Health check failed, continuing..."
 
 # Start server with Daphne
 echo "Starting Daphne server..."

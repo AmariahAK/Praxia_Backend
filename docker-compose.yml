@@ -5,6 +5,7 @@ services:
       - ./:/app:delegated
       - static_volume:/app/staticfiles
       - media_volume:/app/media
+      - model_volume:/app/data/models
     ports:
       - "8000:8000"
     env_file:
@@ -17,6 +18,12 @@ services:
     restart: always
     networks:
       - praxia-network
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+        reservations:
+          memory: 1G
 
   redis:
     image: redis:7
@@ -33,6 +40,7 @@ services:
       - ./:/app:delegated
       - ./data:/app/data
       - media_volume:/app/media
+      - model_volume:/app/data/models
     env_file:
       - ./.env
     environment:
@@ -43,6 +51,12 @@ services:
     restart: always
     networks:
       - praxia-network
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+        reservations:
+          memory: 1G
 
   celery-beat:
     build: .
@@ -50,6 +64,7 @@ services:
     volumes:
       - ./:/app:delegated
       - ./data:/app/data
+      - model_volume:/app/data/models
     env_file:
       - ./.env
     environment:
@@ -66,10 +81,10 @@ services:
     ports:
       - "8888:8888"
     volumes:
-      - ./data/models:/app/data/models
+      - model_volume:/app/data/models
     networks:
       - praxia-network
-    shm_size: "1g"
+    shm_size: "2g"
     ipc: host
     ulimits:
       memlock: -1
@@ -183,5 +198,6 @@ networks:
 volumes:
   static_volume:
   media_volume:
+  model_volume:
   prometheus_data:
   grafana_data:

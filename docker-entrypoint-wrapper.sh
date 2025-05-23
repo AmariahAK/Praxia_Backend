@@ -19,6 +19,9 @@ fi
 
 export SHOULD_MIGRATE
 
+# Ensure BASE_DIR is set
+export BASE_DIR=/app
+
 # Check if ENVIRONMENT variable is set to 'production'
 if [ "$ENVIRONMENT" = "production" ]; then
     echo "Running in production mode with entrypoint.prod.sh and .env.prod"
