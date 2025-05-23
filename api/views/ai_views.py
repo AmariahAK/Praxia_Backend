@@ -146,12 +146,16 @@ class ChatMessageView(APIView):
                 # Regular text message processing
                 praxia = PraxiaAI()
                 try:
+                    # Get the current session title to use as chat topic
+                    chat_topic = session.title if session.title != "New Chat" else None
+                    
                     if "analyze my diet" in message_content.lower() or "diet analysis" in message_content.lower():
                         ai_response = praxia.analyze_diet(message_content, user_profile)
                     elif "medication" in message_content.lower() or "drug interaction" in message_content.lower():
                         ai_response = praxia.analyze_medication(message_content, user_profile)
                     else:
-                        ai_response = praxia.diagnose_symptoms(message_content, user_profile)
+                        # Pass the chat topic to the diagnosis function
+                        ai_response = praxia.diagnose_symptoms(message_content, user_profile, chat_topic)
                 except Exception as e:
                     logger.error("Error processing message", error=str(e), symptoms=message_content[:50])
                     # Provide a more specific error response

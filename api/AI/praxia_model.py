@@ -181,6 +181,122 @@ class PraxiaAI:
         logger.info("Built user context", context=context)
         return context
 
+    def _create_search_terms_from_topic(self, topic, user_profile=None):
+        """
+        Create targeted search terms from chat topic and user profile
+        """
+        search_terms = []
+        
+        # Base search term from topic
+        base_term = topic.replace("_", " ").replace("-", " ").strip()
+        search_terms.append(base_term)
+        
+        # Add user-specific context if available
+        if user_profile:
+            # Age-specific terms
+            if user_profile.get('age'):
+                age = int(user_profile['age'])
+                if age < 18:
+                    search_terms.append(f"{base_term} pediatric")
+                elif age > 65:
+                    search_terms.append(f"{base_term} geriatric elderly")
+                else:
+                    search_terms.append(f"{base_term} adult")
+            
+            # Gender-specific terms
+            if user_profile.get('gender') and user_profile['gender'] in ['male', 'female']:
+                search_terms.append(f"{base_term} {user_profile['gender']}")
+            
+            # Country/region-specific terms for epidemiology
+            if user_profile.get('country'):
+                country = user_profile['country'].lower()
+                # Add regional health considerations
+                regional_terms = {
+                    'kenya': 'malaria tuberculosis HIV',
+                    'nigeria': 'malaria sickle cell',
+                    'india': 'diabetes tuberculosis',
+                    'usa': 'obesity diabetes hypertension',
+                    'uk': 'diabetes cardiovascular',
+                    'canada': 'diabetes cardiovascular',
+                    'australia': 'skin cancer melanoma',
+                    'brazil': 'dengue zika chikungunya',
+                    'china': 'hepatitis tuberculosis',
+                    'japan': 'stroke cardiovascular',
+                }
+                
+                for region, conditions in regional_terms.items():
+                    if region in country:
+                        search_terms.append(f"{base_term} {conditions}")
+                        break
+        
+        # Remove duplicates and return unique terms
+        return list(set(search_terms))
+
+    def _filter_research_by_relevance(self, research_results, user_profile=None, max_results=3):
+        """
+        Filter and rank research results based on user profile relevance
+        """
+        if not research_results or not user_profile:
+            return research_results[:max_results]
+        
+        scored_results = []
+        
+        for article in research_results:
+            score = 0
+            title_lower = article.get('title', '').lower()
+            abstract_lower = article.get('abstract', '').lower()
+            content = title_lower + ' ' + abstract_lower
+            
+            # Age relevance
+            if user_profile.get('age'):
+                age = int(user_profile['age'])
+                if age < 18 and any(term in content for term in ['pediatric', 'children', 'adolescent']):
+                    score += 3
+                elif age > 65 and any(term in content for term in ['elderly', 'geriatric', 'older adults']):
+                    score += 3
+                elif 18 <= age <= 65 and any(term in content for term in ['adult', 'working age']):
+                    score += 2
+            
+            # Gender relevance
+            if user_profile.get('gender'):
+                gender = user_profile['gender'].lower()
+                if gender in ['male', 'female'] and gender in content:
+                    score += 2
+            
+            # Country/regional relevance
+            if user_profile.get('country'):
+                country = user_profile['country'].lower()
+                if country in content:
+                    score += 3
+                # Check for regional disease patterns
+                regional_keywords = {
+                    'kenya': ['malaria', 'tuberculosis', 'hiv', 'tropical'],
+                    'nigeria': ['malaria', 'sickle cell', 'tropical'],
+                    'india': ['tuberculosis', 'diabetes', 'tropical'],
+                    'usa': ['obesity', 'diabetes', 'hypertension', 'cardiovascular'],
+                    'uk': ['diabetes', 'cardiovascular', 'temperate'],
+                    'canada': ['diabetes', 'cardiovascular', 'temperate'],
+                }
+                
+                for region, keywords in regional_keywords.items():
+                    if region in country:
+                        for keyword in keywords:
+                            if keyword in content:
+                                score += 1
+                        break
+            
+            # Allergy relevance
+            if user_profile.get('allergies'):
+                allergies = user_profile['allergies'].lower()
+                if any(allergy.strip() in content for allergy in allergies.split(',') if allergy.strip()):
+                    score += 2
+            
+            scored_results.append((score, article))
+        
+        # Sort by score (descending) and return top results
+        scored_results.sort(key=lambda x: x[0], reverse=True)
+        return [article for score, article in scored_results[:max_results]]
+
     def _preprocess_symptoms(self, symptoms):
         if not symptoms or len(symptoms.strip()) < 3:
             return "unspecified symptoms"
@@ -220,7 +336,7 @@ class PraxiaAI:
         
         return cleaned.strip()
 
-    def diagnose_symptoms(self, symptoms, user_profile=None):
+    def diagnose_symptoms(self, symptoms, user_profile=None, chat_topic=None):
         try:
             processed_symptoms = self._preprocess_symptoms(symptoms)
         
@@ -229,11 +345,12 @@ class PraxiaAI:
                 logger.info("Diagnosing with user profile", 
                             has_gender=bool(user_profile.get('gender')),
                             has_age=bool(user_profile.get('age')),
-                            symptoms=processed_symptoms[:30])
+                            symptoms=processed_symptoms[:30],
+                            chat_topic=chat_topic)
             else:
                 logger.warning("Diagnosing without user profile", symptoms=processed_symptoms[:30])
         
-            cache_key = f"diagnosis_{hash(processed_symptoms)}_{hash(str(user_profile))}"
+            cache_key = f"diagnosis_{hash(processed_symptoms)}_{hash(str(user_profile))}_{hash(str(chat_topic))}"
             cached_result = cache.get(cache_key)
             if cached_result:
                 logger.info("Returning cached diagnosis", symptoms=processed_symptoms[:30])
@@ -241,13 +358,21 @@ class PraxiaAI:
 
             context = self._build_user_context(user_profile)
             health_data = self._get_latest_health_data()
-            research_results = self._get_topic_specific_data(processed_symptoms, limit=3)
+            
+            # Use chat topic for more targeted search if available
+            search_topic = chat_topic if chat_topic and chat_topic != "New Chat" else processed_symptoms
+            research_results = self._get_targeted_research_data(search_topic, user_profile, limit=5)
+            
+            # Filter research results based on user profile
+            filtered_research = self._filter_research_by_relevance(research_results, user_profile, max_results=3)
+            
             research_context = ""
-            if research_results:
-                research_context = "Relevant medical research:\n"
-                for i, article in enumerate(research_results):
+            if filtered_research:
+                research_context = "Relevant medical research (filtered for your profile):\n"
+                for i, article in enumerate(filtered_research):
                     research_context += f"{i+1}. {article.get('title', 'Untitled')} ({article.get('journal', 'Unknown')}): "
                     research_context += f"{article.get('abstract', 'No abstract')[:200]}...\n"
+            
             news_context = ""
             if 'health_news' in health_data and health_data['health_news']:
                 news_context = "Recent health news:\n"
@@ -260,6 +385,7 @@ class PraxiaAI:
 {context}
 
 Based on these symptoms: {processed_symptoms}
+Chat context: {chat_topic or 'General consultation'}
 
 {research_context}
 
@@ -311,7 +437,7 @@ Your response must be valid JSON that can be parsed programmatically.
                     
                 result = {
                     "diagnosis": diagnosis_data,
-                    "related_research": research_results,
+                    "related_research": filtered_research,
                     "disclaimer": "This information is for educational purposes only and not a substitute for professional medical advice."
                 }
                 cache.set(cache_key, result, self.cache_timeout)
@@ -342,6 +468,118 @@ Your response must be valid JSON that can be parsed programmatically.
                 },
                 "disclaimer": "This information is for educational purposes only and not a substitute for professional medical advice."
             }
+
+    def _get_targeted_research_data(self, topic, user_profile=None, limit=5):
+        """
+        Get research data using targeted search terms based on topic and user profile
+        """
+        try:
+            # Create targeted search terms
+            search_terms = self._create_search_terms_from_topic(topic, user_profile)
+            
+            all_results = []
+            
+            for search_term in search_terms[:3]:  # Limit to top 3 search terms to avoid too many requests
+                try:
+                    results = self.get_medical_research(search_term, limit=max(2, limit // len(search_terms)))
+                    if results:
+                        all_results.extend(results)
+                        logger.info("Retrieved research for term", term=search_term, count=len(results))
+                except Exception as e:
+                    logger.warning("Failed to get research for term", term=search_term, error=str(e))
+                    continue
+            
+            # Remove duplicates based on title
+            seen_titles = set()
+            unique_results = []
+            for result in all_results:
+                title = result.get('title', '').lower().strip()
+                if title and title not in seen_titles:
+                    seen_titles.add(title)
+                    unique_results.append(result)
+            
+            return unique_results[:limit]
+            
+        except Exception as e:
+            logger.error("Error in targeted research data retrieval", error=str(e), topic=topic)
+            # Fallback to original method
+            return self.get_medical_research(topic, limit=limit)
+
+    def _get_latest_health_data(self):
+        """Get the latest health check data for AI context"""
+        from ..models import HealthCheckResult
+
+        latest_check = HealthCheckResult.objects.order_by('-timestamp').first()
+        if latest_check:
+            return latest_check.external_data
+        return {}
+
+    def _get_topic_specific_data(self, topic, limit=3):
+        """Get topic-specific data for the current conversation"""
+        health_data = self._get_latest_health_data()
+        if 'research_trends' in health_data:
+            for research_topic, articles in health_data['research_trends'].items():
+                if topic.lower() in research_topic.lower():
+                    logger.info("Using cached research for topic", topic=topic)
+                    return articles[:limit]
+        logger.info("Performing new search for topic", topic=topic)
+        return self.get_medical_research(topic, limit=limit)
+
+    def _scrape_mayo_news(self, limit=3):
+        try:
+            # Use a different Mayo Clinic endpoint that's more accessible
+            url = "https://www.mayoclinic.org/about-mayo-clinic/news"
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            }
+            response = requests.get(url, timeout=10, headers=headers)
+            response.raise_for_status()
+            soup = BeautifulSoup(response.text, 'html.parser')
+            
+            # Try multiple selectors for news items
+            news_items = soup.select('article') or soup.select('.content-item') or soup.select('.news-item')
+            articles = []
+            
+            for item in news_items[:limit]:
+                try:
+                    title_elem = item.select_one('h2, h3, .title, .headline')
+                    title = title_elem.text.strip() if title_elem else "Health News Update"
+                    
+                    link_elem = item.select_one('a')
+                    url = link_elem['href'] if link_elem and 'href' in link_elem.attrs else "#"
+                    if url.startswith('/'):
+                        url = "https://www.mayoclinic.org" + url
+                    
+                    # Get some content text if available
+                    content_elem = item.select_one('p, .summary, .excerpt')
+                    content = content_elem.text.strip() if content_elem else "Mayo Clinic health information"
+                    
+                    articles.append({
+                        "title": title,
+                        "source": "Mayo Clinic",
+                        "url": url,
+                        "content": content,
+                        "image_url": None,
+                        "published_date": None
+                    })
+                except Exception as e:
+                    logger.warning(f"Error processing Mayo Clinic news item: {str(e)}")
+                    continue
+            
+            return articles
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Error scraping Mayo Clinic news: {str(e)}")
+            # Return fallback Mayo Clinic content
+            return [{
+                "title": "Mayo Clinic Health Information",
+                "source": "Mayo Clinic",
+                "url": "https://www.mayoclinic.org/",
+                "content": "Access comprehensive health information and medical expertise from Mayo Clinic.",
+                "published_date": datetime.now().strftime("%Y-%m-%d")
+            }]
+        except Exception as e:
+            logger.error(f"Unexpected error scraping Mayo Clinic: {str(e)}")
+            return []
 
     def analyze_xray(self, image_data):
         if not hasattr(self, 'densenet_model') or self.densenet_model is None:
@@ -466,7 +704,8 @@ Your response must be valid JSON that can be parsed programmatically.
             for article in results:
                 article_data = {
                     "title": article.title,
-                    "authors": ", ".join([author['lastname'] + ' ' + author['firstname'][0] for author in article.authors]) if article.authors else "Unknown",
+                    "authors": ", ".join([author['lastname'] + ' ' + author['firstname'][0] for
+                        author in article.authors]) if article.authors else "Unknown",
                     "journal": article.journal,
                     "publication_date": str(article.publication_date) if hasattr(article, 'publication_date') else "Unknown",
                     "doi": article.doi if hasattr(article, 'doi') else None,
@@ -858,163 +1097,4 @@ Summary:"""
                 return content[:max_length] + ("..." if len(content) > max_length else "")
         except Exception as e:
             logger.error(f"Error summarizing article: {str(e)}")
-            return content[:max_length] + "..."
-
-    def _get_latest_health_data(self):
-        """Get the latest health check data for AI context"""
-        from ..models import HealthCheckResult
-
-        latest_check = HealthCheckResult.objects.order_by('-timestamp').first()
-        if latest_check:
-            return latest_check.external_data
-        return {}
-
-    def _get_topic_specific_data(self, topic, limit=3):
-        """Get topic-specific data for the current conversation"""
-        health_data = self._get_latest_health_data()
-        if 'research_trends' in health_data:
-            for research_topic, articles in health_data['research_trends'].items():
-                if topic.lower() in research_topic.lower():
-                    logger.info("Using cached research for topic", topic=topic)
-                    return articles[:limit]
-        logger.info("Performing new search for topic", topic=topic)
-        return self.get_medical_research(topic, limit=limit)
-
-    def _scrape_mayo_news(self, limit=3):
-        try:
-            # Use a different Mayo Clinic endpoint that's more accessible
-            url = "https://www.mayoclinic.org/about-mayo-clinic/news"
-            headers = {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-            }
-            response = requests.get(url, timeout=10, headers=headers)
-            response.raise_for_status()
-            soup = BeautifulSoup(response.text, 'html.parser')
-            
-            # Try multiple selectors for news items
-            news_items = soup.select('article') or soup.select('.content-item') or soup.select('.news-item')
-            articles = []
-            
-            for item in news_items[:limit]:
-                try:
-                    title_elem = item.select_one('h2, h3, .title, .headline')
-                    title = title_elem.text.strip() if title_elem else "Health News Update"
-                    
-                    link_elem = item.select_one('a')
-                    url = link_elem['href'] if link_elem and 'href' in link_elem.attrs else "#"
-                    if url.startswith('/'):
-                        url = "https://www.mayoclinic.org" + url
-                    
-                    # Get some content text if available
-                    content_elem = item.select_one('p, .summary, .excerpt')
-                    content = content_elem.text.strip() if content_elem else "Mayo Clinic health information"
-                    
-                    articles.append({
-                        "title": title,
-                        "source": "Mayo Clinic",
-                        "url": url,
-                        "content": content,
-                        "image_url": None,
-                        "published_date": None
-                    })
-                except Exception as e:
-                    logger.warning(f"Error processing Mayo Clinic news item: {str(e)}")
-                    continue
-            
-            return articles
-        except requests.exceptions.RequestException as e:
-            logger.error(f"Error scraping Mayo Clinic news: {str(e)}")
-            # Return fallback Mayo Clinic content
-            return [{
-                "title": "Mayo Clinic Health Information",
-                "source": "Mayo Clinic",
-                "url": "https://www.mayoclinic.org/",
-                "content": "Access comprehensive health information and medical expertise from Mayo Clinic.",
-                "published_date": datetime.now().strftime("%Y-%m-%d")
-            }]
-        except Exception as e:
-            logger.error(f"Unexpected error scraping Mayo Clinic: {str(e)}")
-            return []
-
-# -------------------- Celery Task Wrappers --------------------
-
-@shared_task
-def diagnose_symptoms_task(symptoms, user_profile=None):
-    """
-    Celery task wrapper for PraxiaAI.diagnose_symptoms
-    """
-    praxia = PraxiaAI()
-    return praxia.diagnose_symptoms(symptoms, user_profile)
-
-@shared_task
-def analyze_xray_task(xray_id, image_path):
-    """
-    Celery task wrapper for PraxiaAI.analyze_xray that saves results to the database
-    """
-    praxia = PraxiaAI()
-    result = praxia.analyze_xray(image_path)
-    
-    # Import here to avoid circular import issues
-    from ..models import XRayAnalysis, ChatMessage
-    
-    # Get the XRayAnalysis object and update it with results
-    xray = XRayAnalysis.objects.get(id=xray_id)
-    xray.analysis_result = json.dumps(result)
-    
-    # Extract and save detected conditions and confidence scores
-    if isinstance(result, dict):
-        xray.detected_conditions = result.get("detected_conditions", {})
-        xray.confidence_scores = result.get("confidence_scores", {})
-    
-    xray.save()
-    
-    # Update any chat messages that were waiting for this analysis
-    pending_messages = ChatMessage.objects.filter(
-        role='assistant',
-        content__contains=f'"xray_analysis_id": {xray_id}'
-    )
-    
-    for message in pending_messages:
-        try:
-            # Parse the current content
-            content_data = json.loads(message.content)
-            
-            # Update with the completed analysis
-            content_data.update({
-                "message": "I've completed the analysis of your X-ray.",
-                "xray_analysis_id": xray_id,
-                "status": "completed",
-                "xray_analysis_result": result
-            })
-            
-            # Save the updated content
-            message.content = json.dumps(content_data)
-            message.save()
-        except Exception as e:
-            logger.error(f"Error updating chat message with X-ray results: {str(e)}")
-    
-    return result
-
-@shared_task
-def analyze_diet_task(diet_info, user_profile=None):
-    """
-    Celery task wrapper for PraxiaAI.analyze_diet
-    """
-    praxia = PraxiaAI()
-    return praxia.analyze_diet(diet_info, user_profile)
-
-@shared_task
-def analyze_medication_task(medication_info, user_profile=None):
-    """
-    Celery task wrapper for PraxiaAI.analyze_medication
-    """
-    praxia = PraxiaAI()
-    return praxia.analyze_medication(medication_info, user_profile)
-
-@shared_task
-def scrape_health_news(source='who', limit=3):
-    """
-    Celery task wrapper for PraxiaAI._scrape_health_news
-    """
-    praxia = PraxiaAI()
-    return praxia._scrape_health_news(source=source, limit=limit)
+            return content[:max_length]
