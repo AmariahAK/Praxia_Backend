@@ -146,12 +146,14 @@ class ChatMessageView(APIView):
             # Update session title if it's a new session with generic title
             if session.title == "New Chat" and len(session.messages.all()) <= 2:
                 praxia = PraxiaAI()
-                topic_prompt = f"Based on this message, suggest a short (3-5 words) title for this conversation: '{message_content}'"
+                topic_prompt = f"Based on this message, suggest a short (3-5 words) title for this conversation. Return ONLY the title without quotes or additional text: '{message_content}'"
                 try:
                     topic = praxia._call_together_ai(topic_prompt).strip()
+                    topic = topic.replace('"', '').replace("'", "").strip()
                     if topic and len(topic) > 0:
                         session.title = topic[:255] 
                         session.save()
+                        logger.info("Generated chat topic", topic=topic)
                 except Exception as e:
                     logger.error("Failed to generate topic", error=str(e))
         

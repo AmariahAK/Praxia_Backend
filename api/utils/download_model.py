@@ -18,10 +18,10 @@ def download_and_setup_weights():
         target_dir = os.path.join(os.environ.get("BASE_DIR", ""), "data", "models")
         os.makedirs(target_dir, exist_ok=True)
         
-        # Get the model's state dict and save it directly
+        # Save the model to the target directory
         target_path = os.path.join(target_dir, "densenet_xray.pth")
-        torch.save(model.state_dict(), target_path)
-        logger.info(f"Weights saved to: {target_path}")
+        torch.save(model, target_path)
+        logger.info(f"Model saved to: {target_path}")
         
     except Exception as e:
         logger.error(f"Error downloading weights: {str(e)}")

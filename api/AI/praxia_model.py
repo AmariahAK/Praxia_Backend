@@ -52,15 +52,10 @@ class PraxiaAI:
 
     def _initialize_xray_model(self):
         try:
-            from monai.networks.nets import DenseNet121
-            self.densenet_model = DenseNet121(
-                spatial_dims=2,
-                in_channels=1,
-                out_channels=3,  # Fracture, tumor, pneumonia
-            ).to(self.device)
             densenet_path = os.path.join(settings.BASE_DIR, 'data', 'models', 'densenet_xray.pth')
             if os.path.exists(densenet_path):
-                self.densenet_model.load_state_dict(torch.load(densenet_path, map_location=self.device))
+                # Load the entire model instead of just the state dict
+                self.densenet_model = torch.load(densenet_path, map_location=self.device)
                 self.densenet_model.eval()
                 logger.info("DenseNet model loaded successfully")
             else:
@@ -162,7 +157,15 @@ Your response must be valid JSON that can be parsed programmatically.
         try:
             response_text = self._call_together_ai(prompt)
             try:
-                diagnosis_data = json.loads(response_text)
+                try:
+                    diagnosis_data = json.loads(response_text)
+                except json.JSONDecodeError:
+                    if "" in response_text and "" in response_text:
+                        json_content = response_text.split("")[1].split("")[0].strip()
+                        diagnosis_data = json.loads(json_content)
+                    else:
+                        raise
+                        
             except json.JSONDecodeError:
                 logger.warning("Failed to parse JSON response", response=response_text[:100])
                 diagnosis_data = {
