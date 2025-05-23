@@ -53,6 +53,9 @@ class MedicalConsultation(models.Model):
     def __str__(self):
         return f"Consultation for {self.user.username} on {self.created_at.strftime('%Y-%m-%d')}"
 
+def user_xray_path(instance, filename):
+    return f'user_{instance.user.id}/xrays/{filename}'
+
 class XRayAnalysis(models.Model):
     """Record of an X-ray analysis"""
     CONDITION_CHOICES = (
@@ -64,7 +67,7 @@ class XRayAnalysis(models.Model):
     )
     
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='xray_analyses', db_index=True)
-    image = models.ImageField(upload_to='xrays/')
+    image = models.ImageField(upload_to=user_xray_path)
     analysis_result = models.TextField()
     detected_conditions = models.JSONField(default=dict, blank=True)
     confidence_scores = models.JSONField(default=dict, blank=True)

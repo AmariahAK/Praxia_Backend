@@ -72,17 +72,27 @@ class PraxiaAI:
     def _build_user_context(self, user_profile):
         if not user_profile:
             return ""
+        
+        logger.info("Building context with user profile", 
+                    profile_data=json.dumps({k: v for k, v in user_profile.items() if v}))
+        
         context = f"Patient information: "
         if user_profile.get('gender'):
             context += f"Gender: {user_profile.get('gender')}, "
-        context += f"Age {user_profile.get('age', 'unknown')}, "
-        context += f"Weight {user_profile.get('weight', 'unknown')}kg, "
-        context += f"Height {user_profile.get('height', 'unknown')}cm, "
-        context += f"Country: {user_profile.get('country', 'unknown')}. "
+        if user_profile.get('age'):
+            context += f"Age: {user_profile.get('age')} years, "
+        if user_profile.get('weight'):
+            context += f"Weight: {user_profile.get('weight')}kg, "
+        if user_profile.get('height'):
+            context += f"Height: {user_profile.get('height')}cm, "
+        if user_profile.get('country'):
+            context += f"Country: {user_profile.get('country')}. "
         if user_profile.get('allergies'):
             context += f"Allergies: {user_profile.get('allergies')}. "
         if user_profile.get('medical_history'):
             context += f"Medical history: {user_profile.get('medical_history')}. "
+        
+        logger.info("Built user context", context=context)
         return context
 
     def _preprocess_symptoms(self, symptoms):
@@ -93,6 +103,16 @@ class PraxiaAI:
 
     def diagnose_symptoms(self, symptoms, user_profile=None):
         processed_symptoms = self._preprocess_symptoms(symptoms)
+        
+        # Log whether user profile is being used
+        if user_profile:
+            logger.info("Diagnosing with user profile", 
+                        has_gender=bool(user_profile.get('gender')),
+                        has_age=bool(user_profile.get('age')),
+                        symptoms=processed_symptoms[:30])
+        else:
+            logger.warning("Diagnosing without user profile", symptoms=processed_symptoms[:30])
+        
         cache_key = f"diagnosis_{hash(processed_symptoms)}_{hash(str(user_profile))}"
         cached_result = cache.get(cache_key)
         if cached_result:
@@ -467,32 +487,73 @@ Your response must be valid JSON that can be parsed programmatically.
             return cached_result
         try:
             articles = []
+            
+            # Add more fallback sources
+            sources_to_try = []
             if source in ['who', 'all']:
-                who_articles = self._scrape_who_news(limit=limit if source == 'who' else max(1, limit // 2))
-                articles.extend(who_articles)
+                sources_to_try.append(('who', self._scrape_who_news))
             if source in ['cdc', 'all']:
-                cdc_articles = self._scrape_cdc_news(limit=limit if source == 'cdc' else max(1, limit // 2))
-                articles.extend(cdc_articles)
+                sources_to_try.append(('cdc', self._scrape_cdc_news))
+            
+            # Try additional sources like NIH, Mayo Clinic, etc.
+            if source in ['mayo', 'all']:
+                sources_to_try.append(('mayo', self._scrape_mayo_news))
+            
+            # Try each source, continue on failure
+            for src_name, scrape_func in sources_to_try:
+                try:
+                    src_articles = scrape_func(limit=limit if source == src_name else max(1, limit // len(sources_to_try)))
+                    articles.extend(src_articles)
+                    logger.info(f"Retrieved {len(src_articles)} articles from {src_name}")
+                except Exception as e:
+                    logger.error(f"Failed to scrape {src_name}", error=str(e))
+                    continue
+            
+            # Add fallback if no articles found
+            if not articles:
+                logger.warning("No articles found, using fallback")
+                articles = self._get_fallback_health_news(limit)
+            
+            # Process articles
             articles = articles[:limit]
             for article in articles:
                 if 'content' in article and article['content']:
                     article['summary'] = self._summarize_article(article['content'])
                 else:
                     article['summary'] = "No content available for summarization."
+            
             cache.set(cache_key, articles, 60 * 60 * 12)
             logger.info("Health news scraped successfully", source=source, count=len(articles))
             return articles
         except Exception as e:
             logger.error("Error scraping health news", error=str(e), source=source)
-            return [
-                {
-                    "title": "Unable to retrieve health news at this time",
-                    "source": source,
-                    "url": "#",
-                    "summary": "Please try again later.",
-                    "published_date": datetime.now().strftime("%Y-%m-%d")
-                }
-            ]
+            return self._get_fallback_health_news(limit)
+
+    def _get_fallback_health_news(self, limit=3):
+        """Fallback method for when scraping fails"""
+        return [
+            {
+                "title": "COVID-19 Updates and Prevention Measures",
+                "source": "WHO",
+                "url": "https://www.who.int/emergencies/diseases/novel-coronavirus-2019",
+                "summary": "Latest information on COVID-19 prevention, symptoms, and global statistics.",
+                "published_date": datetime.now().strftime("%Y-%m-%d")
+            },
+            {
+                "title": "Managing Chronic Conditions During Healthcare Disruptions",
+                "source": "CDC",
+                "url": "https://www.cdc.gov/",
+                "summary": "Guidance for patients with chronic conditions during healthcare system disruptions.",
+                "published_date": datetime.now().strftime("%Y-%m-%d")
+            },
+            {
+                "title": "Seasonal Illness Prevention Strategies",
+                "source": "Mayo Clinic",
+                "url": "https://www.mayoclinic.org/",
+                "summary": "Tips for preventing common seasonal illnesses and maintaining good health.",
+                "published_date": datetime.now().strftime("%Y-%m-%d")
+            }
+        ][:limit]
 
     def _scrape_who_news(self, limit=3):
         try:

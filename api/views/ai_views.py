@@ -136,11 +136,24 @@ class ChatMessageView(APIView):
             else:
                 ai_response = praxia.diagnose_symptoms(message_content, user_profile)
         
-        ai_message = ChatMessage.objects.create(
-            session=session,
-            role='assistant',
-            content=json.dumps(ai_response)
-        )
+        if ai_response and isinstance(ai_response, dict):
+            ai_message = ChatMessage.objects.create(
+                session=session,
+                role='assistant',
+                content=json.dumps(ai_response)  
+            )
+            
+            # Update session title if it's a new session with generic title
+            if session.title == "New Chat" and len(session.messages.all()) <= 2:
+                praxia = PraxiaAI()
+                topic_prompt = f"Based on this message, suggest a short (3-5 words) title for this conversation: '{message_content}'"
+                try:
+                    topic = praxia._call_together_ai(topic_prompt).strip()
+                    if topic and len(topic) > 0:
+                        session.title = topic[:255] 
+                        session.save()
+                except Exception as e:
+                    logger.error("Failed to generate topic", error=str(e))
         
         session.save()
         logger.info("Chat message processed", session_id=session_id, user=request.user.username)
@@ -148,7 +161,6 @@ class ChatMessageView(APIView):
             'user_message': ChatMessageSerializer(user_message).data,
             'ai_message': ChatMessageSerializer(ai_message).data
         })
-
 class MedicalConsultationView(APIView):
     """View for medical consultations"""
     permission_classes = [permissions.IsAuthenticated]

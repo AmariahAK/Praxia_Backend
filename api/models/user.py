@@ -3,6 +3,9 @@ from django.contrib.auth.models import User
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 
+def user_profile_image_path(instance, filename):
+    return f'user_{instance.user.id}/profile_pics/{filename}'
+
 class UserProfile(models.Model):
     """Extended user profile with health information"""
     GENDER_CHOICES = (
@@ -19,7 +22,7 @@ class UserProfile(models.Model):
     )
     
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='profile')
-    profile_picture = models.ImageField(upload_to='profile_pics/', null=True, blank=True)
+    profile_picture = models.ImageField(upload_to=user_profile_image_path, null=True, blank=True)
     age = models.PositiveIntegerField(null=True, blank=True)
     gender = models.CharField(max_length=20, choices=GENDER_CHOICES, null=True, blank=True)
     gender_locked = models.BooleanField(default=False, help_text="Once set, gender cannot be changed")
