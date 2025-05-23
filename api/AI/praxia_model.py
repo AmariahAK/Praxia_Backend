@@ -37,7 +37,14 @@ class PraxiaAI:
         self.together_model = settings.TOGETHER_AI_MODEL
         self.cache_timeout = 60 * 60 * 24  # 24 hours cache
         self.pubmed_client = pymed.PubMed(tool="PraxiaAI", email="contact@praxia.ai")
+        
+        # Improved CUDA detection
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        if self.device.type == "cuda":
+            logger.info(f"Using CUDA device: {torch.cuda.get_device_name(0)}")
+        else:
+            logger.info("CUDA not available, using CPU")
+        
         self.densenet_model = None
         if getattr(settings, "INITIALIZE_XRAY_MODEL", False):
             self._initialize_xray_model()
@@ -71,7 +78,7 @@ class PraxiaAI:
                 # Try to create a simple model as fallback
                 try:
                     from torchvision.models import densenet121
-                    model = densenet121(pretrained=False)
+                    model = densenet121(weights=None)  
                     num_ftrs = model.classifier.in_features
                     model.classifier = torch.nn.Linear(num_ftrs, 3)
                     self.densenet_model = model
@@ -82,8 +89,7 @@ class PraxiaAI:
                     self.densenet_model = None
                 return
             
-            # Check if the file is a valid model file (has minimum size)
-            if os.path.getsize(densenet_path) < 1000000:  # < 1MB
+            if os.path.getsize(densenet_path) < 1000000:  
                 logger.warning("DenseNet model file is too small, may be corrupted")
                 self.densenet_model = None
                 return

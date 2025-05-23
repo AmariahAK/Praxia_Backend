@@ -4,6 +4,8 @@ FROM python:3.13-slim
 ENV PYTHONDONTWRITEBYTECODE 1
 ENV PYTHONUNBUFFERED 1
 ENV BASE_DIR /app
+ENV NVIDIA_VISIBLE_DEVICES all
+ENV NVIDIA_DRIVER_CAPABILITIES compute,utility
 
 # Install system dependencies (including libraries needed for PyTorch)
 RUN apt-get update && apt-get install -y --no-install-recommends \

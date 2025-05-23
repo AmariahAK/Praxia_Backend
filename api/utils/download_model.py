@@ -19,7 +19,7 @@ def download_and_setup_weights():
         target_path = os.path.join(target_dir, "densenet_xray.pth")
         
         # If we already have a model file, don't download again
-        if os.path.exists(target_path) and os.path.getsize(target_path) > 1000000:  # > 1MB
+        if os.path.exists(target_path) and os.path.getsize(target_path) > 1000000: 
             logger.info(f"Model file already exists at {target_path}")
             return
             
@@ -28,11 +28,11 @@ def download_and_setup_weights():
         
         try:
             # Initialize with no pretrained weights to ensure architecture compatibility
-            model = densenet121(pretrained=False)
+            model = densenet121(weights=None)  
             
             # Ensure input layer can handle RGB (3-channel) images
             num_ftrs = model.classifier.in_features
-            model.classifier = torch.nn.Linear(num_ftrs, 3)  # Our output has 3 classes
+            model.classifier = torch.nn.Linear(num_ftrs, 3)  
             
             # Save the model
             torch.save(model, target_path)
