@@ -72,8 +72,8 @@ class ChatMessageView(APIView):
         """Create a new message and get AI response"""
         session = get_object_or_404(ChatSession, id=session_id, user=request.user)
         
-        # Handle both multipart form data and JSON content
         try:
+            # Handle both multipart form data and JSON content
             if request.content_type and 'multipart/form-data' in request.content_type:
                 # Handle multipart form data (for file uploads)
                 xray_image = request.FILES.get('xray_image')
@@ -83,11 +83,13 @@ class ChatMessageView(APIView):
                 xray_image = None
                 message_content = request.data.get('content', '')
         
+            # Set a minimum message to prevent empty messages
             if not message_content or message_content.strip() == '':
                 message_content = "Hello"
             
-            # Validate that the message isn't just a fragment ending with an apostrophe
-            if message_content.strip().endswith("'") and len(message_content.strip()) < 10:
+            # Clean up the message content to prevent parsing errors
+            message_content = message_content.strip()
+            if message_content.endswith("'") and len(message_content) < 10:
                 message_content += " "  # Add a space to avoid empty separator error
             
             user_message_serializer = ChatMessageSerializer(data={
@@ -109,6 +111,9 @@ class ChatMessageView(APIView):
                 'country': request.user.profile.country,
                 'allergies': request.user.profile.allergies
             }
+        
+            # Filter out None values from user profile
+            user_profile = {k: v for k, v in user_profile.items() if v is not None}
         
             ai_response = None
         

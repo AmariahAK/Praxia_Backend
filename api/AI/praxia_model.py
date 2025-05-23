@@ -202,11 +202,14 @@ class PraxiaAI:
         if not cleaned or len(cleaned.strip()) < 3:
             return "unspecified symptoms"
         
-        cleaned = cleaned.replace("'", "'")  
+
+        cleaned = cleaned.replace("'", "'")
+        
+        if cleaned.strip().endswith("'") or cleaned.strip().endswith("'"):
+            cleaned = cleaned.strip() + " "
         
         # Handle sentence formatting
         if '.' in cleaned and not cleaned.endswith('.'):
-            # Make sure we don't have empty segments when splitting
             sentences = [s.strip() for s in cleaned.split('.') if s.strip()]
             if sentences:
                 return '. '.join(sentences) + '.'
@@ -214,40 +217,41 @@ class PraxiaAI:
         return cleaned
 
     def diagnose_symptoms(self, symptoms, user_profile=None):
-        processed_symptoms = self._preprocess_symptoms(symptoms)
+        try:
+            processed_symptoms = self._preprocess_symptoms(symptoms)
         
-        # Log whether user profile is being used
-        if user_profile:
-            logger.info("Diagnosing with user profile", 
-                        has_gender=bool(user_profile.get('gender')),
-                        has_age=bool(user_profile.get('age')),
-                        symptoms=processed_symptoms[:30])
-        else:
-            logger.warning("Diagnosing without user profile", symptoms=processed_symptoms[:30])
+            # Log whether user profile is being used
+            if user_profile:
+                logger.info("Diagnosing with user profile", 
+                            has_gender=bool(user_profile.get('gender')),
+                            has_age=bool(user_profile.get('age')),
+                            symptoms=processed_symptoms[:30])
+            else:
+                logger.warning("Diagnosing without user profile", symptoms=processed_symptoms[:30])
         
-        cache_key = f"diagnosis_{hash(processed_symptoms)}_{hash(str(user_profile))}"
-        cached_result = cache.get(cache_key)
-        if cached_result:
-            logger.info("Returning cached diagnosis", symptoms=processed_symptoms[:30])
-            return cached_result
+            cache_key = f"diagnosis_{hash(processed_symptoms)}_{hash(str(user_profile))}"
+            cached_result = cache.get(cache_key)
+            if cached_result:
+                logger.info("Returning cached diagnosis", symptoms=processed_symptoms[:30])
+                return cached_result
 
-        context = self._build_user_context(user_profile)
-        health_data = self._get_latest_health_data()
-        research_results = self._get_topic_specific_data(processed_symptoms, limit=3)
-        research_context = ""
-        if research_results:
-            research_context = "Relevant medical research:\n"
-            for i, article in enumerate(research_results):
-                research_context += f"{i+1}. {article.get('title')} ({article.get('journal')}): "
-                research_context += f"{article.get('abstract')[:200]}...\n"
-        news_context = ""
-        if 'health_news' in health_data and health_data['health_news']:
-            news_context = "Recent health news:\n"
-            for i, article in enumerate(health_data['health_news'][:2]):
-                news_context += f"{i+1}. {article.get('title')} ({article.get('source')}): "
-                news_context += f"{article.get('summary')[:150]}...\n"
+            context = self._build_user_context(user_profile)
+            health_data = self._get_latest_health_data()
+            research_results = self._get_topic_specific_data(processed_symptoms, limit=3)
+            research_context = ""
+            if research_results:
+                research_context = "Relevant medical research:\n"
+                for i, article in enumerate(research_results):
+                    research_context += f"{i+1}. {article.get('title', 'Untitled')} ({article.get('journal', 'Unknown')}): "
+                    research_context += f"{article.get('abstract', 'No abstract')[:200]}...\n"
+            news_context = ""
+            if 'health_news' in health_data and health_data['health_news']:
+                news_context = "Recent health news:\n"
+                for i, article in enumerate(health_data['health_news'][:2]):
+                    news_context += f"{i+1}. {article.get('title', 'Untitled')} ({article.get('source', 'Unknown')}): "
+                    news_context += f"{article.get('summary', 'No summary')[:150]}...\n"
 
-        prompt = f"""You are Praxia, a medical AI assistant. {self.identity}
+            prompt = f"""You are Praxia, a medical AI assistant. {self.identity}
 
 {context}
 
@@ -271,41 +275,68 @@ If symptoms are ambiguous, focus on the "clarification" section to gather more i
 
 Your response must be valid JSON that can be parsed programmatically.
 """
-        try:
-            response_text = self._call_together_ai(prompt)
             try:
+                response_text = self._call_together_ai(prompt)
                 try:
+                    # First try direct JSON parsing
                     diagnosis_data = json.loads(response_text)
                 except json.JSONDecodeError:
+                    # Try to extract JSON from markdown blocks if present
                     if "" in response_text and "" in response_text:
                         json_content = response_text.split("")[1].split("")[0].strip()
-                        diagnosis_data = json.loads(json_content)
+                        try:
+                            diagnosis_data = json.loads(json_content)
+                        except json.JSONDecodeError:
+                            raise
+                    elif "" in response_text and "" in response_text:
+                        json_content = response_text.split("")[1].split("")[0].strip()
+                        try:
+                            diagnosis_data = json.loads(json_content)
+                        except json.JSONDecodeError:
+                            raise
                     else:
                         raise
-                        
-            except json.JSONDecodeError:
-                logger.warning("Failed to parse JSON response", response=response_text[:100])
-                diagnosis_data = {
-                    "conditions": ["Unable to parse conditions from response"],
-                    "next_steps": ["Consult with a healthcare professional"],
-                    "urgent": ["If symptoms are severe, seek immediate medical attention"],
-                    "advice": response_text,
-                    "clarification": ["Please provide more specific symptom details"]
+            
+                # Validate required fields
+                required_fields = ["conditions", "next_steps", "urgent", "advice", "clarification"]
+                for field in required_fields:
+                    if field not in diagnosis_data:
+                        diagnosis_data[field] = []
+                    if field == "advice" and not diagnosis_data[field]:
+                        diagnosis_data[field] = "Please consult with a healthcare professional for specific advice."
+                    
+                result = {
+                    "diagnosis": diagnosis_data,
+                    "related_research": research_results,
+                    "disclaimer": "This information is for educational purposes only and not a substitute for professional medical advice."
                 }
-            result = {
-                "diagnosis": diagnosis_data,
-                "related_research": research_results,
-                "disclaimer": "This information is for educational purposes only and not a substitute for professional medical advice."
-            }
-            cache.set(cache_key, result, self.cache_timeout)
-            logger.info("Diagnosis completed successfully", symptoms=processed_symptoms[:30])
-            return result
+                cache.set(cache_key, result, self.cache_timeout)
+                logger.info("Diagnosis completed successfully", symptoms=processed_symptoms[:30])
+                return result
+            except Exception as e:
+                logger.error("Error in symptom diagnosis", error=str(e), symptoms=processed_symptoms[:30])
+                # Provide a more user-friendly error response
+                return {
+                    "diagnosis": {
+                        "conditions": ["Unable to analyze symptoms at this time"],
+                        "next_steps": ["Please consult with a healthcare professional"],
+                        "urgent": [],
+                        "advice": "I apologize, but I'm having trouble analyzing your symptoms right now. Please try again or consult with a healthcare professional.",
+                        "clarification": ["Could you provide more details about your symptoms?"]
+                    },
+                    "disclaimer": "This information is for educational purposes only and not a substitute for professional medical advice."
+                }
         except Exception as e:
-            logger.error("Error in symptom diagnosis", error=str(e), symptoms=processed_symptoms[:30])
+            logger.error("Unexpected error in symptom diagnosis", error=str(e), exc_info=True)
             return {
-                "error": str(e),
-                "message": "Unable to process diagnosis at this time.",
-                "disclaimer": "Please consult with a healthcare professional for medical advice."
+                "diagnosis": {
+                    "conditions": ["Unable to analyze symptoms at this time"],
+                    "next_steps": ["Please consult with a healthcare professional"],
+                    "urgent": [],
+                    "advice": "I apologize, but I'm having trouble analyzing your symptoms right now. Please try again or consult with a healthcare professional.",
+                    "clarification": ["Could you provide more details about your symptoms?"]
+                },
+                "disclaimer": "This information is for educational purposes only and not a substitute for professional medical advice."
             }
 
     def analyze_xray(self, image_data):
@@ -619,37 +650,64 @@ Your response must be valid JSON that can be parsed programmatically.
         if cached_result:
             logger.info("Returning cached health news")
             return cached_result
+        
         try:
             articles = []
             
-            # Add more fallback sources
+            # Expanded sources list
             sources_to_try = []
             if source in ['who', 'all']:
                 sources_to_try.append(('who', self._scrape_who_news))
             if source in ['cdc', 'all']:
                 sources_to_try.append(('cdc', self._scrape_cdc_news))
-            
-            # Try additional sources like NIH, Mayo Clinic, etc.
             if source in ['mayo', 'all']:
                 sources_to_try.append(('mayo', self._scrape_mayo_news))
             
-            # Try each source, continue on failure
+            # Try each source with more detailed logging
             for src_name, scrape_func in sources_to_try:
                 try:
+                    logger.info(f"Attempting to scrape from {src_name}")
                     src_articles = scrape_func(limit=limit if source == src_name else max(1, limit // len(sources_to_try)))
-                    articles.extend(src_articles)
-                    logger.info(f"Retrieved {len(src_articles)} articles from {src_name}")
+                    if src_articles:
+                        articles.extend(src_articles)
+                        logger.info(f"Successfully retrieved {len(src_articles)} articles from {src_name}")
+                    else:
+                        logger.warning(f"No articles found from {src_name}")
                 except Exception as e:
-                    logger.error(f"Failed to scrape {src_name}", error=str(e))
+                    logger.error(f"Failed to scrape {src_name}", error=str(e), exc_info=True)
                     continue
             
             # Add fallback if no articles found
             if not articles:
-                logger.warning("No articles found, using fallback")
-                articles = self._get_fallback_health_news(limit)
+                logger.warning("No articles found from any source, using fallback data")
+                articles = [
+                    {
+                        "title": "COVID-19 Updates and Prevention Measures",
+                        "source": "WHO",
+                        "url": "https://www.who.int/emergencies/diseases/novel-coronavirus-2019",
+                        "summary": "Latest information on COVID-19 prevention, symptoms, and global statistics.",
+                        "content": "COVID-19 continues to be a global health concern. Vaccination, proper hygiene, and social distancing remain effective preventive measures.",
+                        "published_date": datetime.now().strftime("%Y-%m-%d")
+                    },
+                    {
+                        "title": "Managing Chronic Conditions During Healthcare Disruptions",
+                        "source": "CDC",
+                        "url": "https://www.cdc.gov/",
+                        "summary": "Guidance for patients with chronic conditions during healthcare system disruptions.",
+                        "content": "Patients with chronic conditions should maintain medication supplies, use telehealth when possible, and have emergency plans in place.",
+                        "published_date": datetime.now().strftime("%Y-%m-%d")
+                    },
+                    {
+                        "title": "Seasonal Illness Prevention Strategies",
+                        "source": "Mayo Clinic",
+                        "url": "https://www.mayoclinic.org/",
+                        "summary": "Tips for preventing common seasonal illnesses and maintaining good health.",
+                        "content": "Regular handwashing, adequate sleep, proper nutrition, and staying up-to-date with vaccinations help prevent seasonal illnesses.",
+                        "published_date": datetime.now().strftime("%Y-%m-%d")
+                    }
+                ][:limit]
             
             # Process articles
-            articles = articles[:limit]
             for article in articles:
                 if 'content' in article and article['content']:
                     article['summary'] = self._summarize_article(article['content'])
@@ -657,10 +715,9 @@ Your response must be valid JSON that can be parsed programmatically.
                     article['summary'] = "No content available for summarization."
             
             cache.set(cache_key, articles, 60 * 60 * 12)
-            logger.info("Health news scraped successfully", source=source, count=len(articles))
             return articles
         except Exception as e:
-            logger.error("Error scraping health news", error=str(e), source=source)
+            logger.error("Error scraping health news", error=str(e), exc_info=True)
             return self._get_fallback_health_news(limit)
 
     def _get_fallback_health_news(self, limit=3):
@@ -818,6 +875,47 @@ Summary:"""
                     return articles[:limit]
         logger.info("Performing new search for topic", topic=topic)
         return self.get_medical_research(topic, limit=limit)
+
+    def _scrape_mayo_news(self, limit=3):
+        try:
+            url = "https://www.mayoclinic.org/news"
+            response = requests.get(url, timeout=10)
+            response.raise_for_status()
+            soup = BeautifulSoup(response.text, 'html.parser')
+            news_items = soup.select('article.feature')
+            articles = []
+            
+            for item in news_items[:limit]:
+                try:
+                    title_elem = item.select_one('h3')
+                    title = title_elem.text.strip() if title_elem else "No title"
+                    link_elem = item.select_one('a')
+                    url = "https://www.mayoclinic.org" + link_elem['href'] if link_elem and 'href' in link_elem.attrs else "#"
+                    date_elem = item.select_one('time')
+                    published_date = date_elem.text.strip() if date_elem else None
+                    img_elem = item.select_one('img')
+                    image_url = img_elem['src'] if img_elem and 'src' in img_elem.attrs else None
+                    
+                    # Get some content text if available
+                    content_elem = item.select_one('p')
+                    content = content_elem.text.strip() if content_elem else "Content not available"
+                    
+                    articles.append({
+                        "title": title,
+                        "source": "Mayo Clinic",
+                        "url": url,
+                        "content": content,
+                        "image_url": image_url,
+                        "published_date": published_date
+                    })
+                except Exception as e:
+                    logger.warning(f"Error processing Mayo Clinic news item: {str(e)}")
+                    continue
+            
+            return articles
+        except Exception as e:
+            logger.error(f"Error scraping Mayo Clinic news: {str(e)}")
+            return []
 
 # -------------------- Celery Task Wrappers --------------------
 

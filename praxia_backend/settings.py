@@ -310,15 +310,34 @@ HEALTH_CHECK_INTERVAL = config('HEALTH_CHECK_INTERVAL', cast=int, default=21600)
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
+    'formatters': {
+        'simple': {
+            'format': '%(levelname)s %(message)s'
+        },
+    },
     'handlers': {
         'console': {
             'class': 'logging.StreamHandler',
+            'formatter': 'simple',
+            'level': 'ERROR',  # Only show ERROR level and above
+        },
+        'file': {
+            'class': 'logging.FileHandler',
+            'filename': '/app/data/error.txt',
+            'formatter': 'simple',
+            'level': 'ERROR',
         },
     },
     'loggers': {
         '': {
-            'handlers': ['console'],
-            'level': 'INFO',
+            'handlers': ['console', 'file'],
+            'level': 'ERROR',
+            'propagate': True,
+        },
+        'django': {
+            'handlers': ['console', 'file'],
+            'level': 'ERROR',
+            'propagate': False,
         },
     },
 }
