@@ -635,12 +635,53 @@ def diagnose_symptoms_task(symptoms, user_profile=None):
     return praxia.diagnose_symptoms(symptoms, user_profile)
 
 @shared_task
-def analyze_xray_task(image_data):
+def analyze_xray_task(xray_id, image_path):
     """
-    Celery task wrapper for PraxiaAI.analyze_xray
+    Celery task wrapper for PraxiaAI.analyze_xray that saves results to the database
     """
     praxia = PraxiaAI()
-    return praxia.analyze_xray(image_data)
+    result = praxia.analyze_xray(image_path)
+    
+    # Import here to avoid circular import issues
+    from ..models import XRayAnalysis, ChatMessage
+    
+    # Get the XRayAnalysis object and update it with results
+    xray = XRayAnalysis.objects.get(id=xray_id)
+    xray.analysis_result = json.dumps(result)
+    
+    # Extract and save detected conditions and confidence scores
+    if isinstance(result, dict):
+        xray.detected_conditions = result.get("detected_conditions", {})
+        xray.confidence_scores = result.get("confidence_scores", {})
+    
+    xray.save()
+    
+    # Update any chat messages that were waiting for this analysis
+    pending_messages = ChatMessage.objects.filter(
+        role='assistant',
+        content__contains=f'"xray_analysis_id": {xray_id}'
+    )
+    
+    for message in pending_messages:
+        try:
+            # Parse the current content
+            content_data = json.loads(message.content)
+            
+            # Update with the completed analysis
+            content_data.update({
+                "message": "I've completed the analysis of your X-ray.",
+                "xray_analysis_id": xray_id,
+                "status": "completed",
+                "xray_analysis_result": result
+            })
+            
+            # Save the updated content
+            message.content = json.dumps(content_data)
+            message.save()
+        except Exception as e:
+            logger.error(f"Error updating chat message with X-ray results: {str(e)}")
+    
+    return result
 
 @shared_task
 def analyze_diet_task(diet_info, user_profile=None):

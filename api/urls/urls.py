@@ -22,6 +22,7 @@ from ..views import (
     TOTPSetupView,
     TOTPVerifyView,
     AuthenticatedHealthCheckView,
+    XRayAnalysisDetailView
 )
 
 # Create a router for ViewSets
@@ -62,6 +63,7 @@ urlpatterns = [
     
     # X-ray analysis URLs
     path('xray-analyses/', XRayAnalysisView.as_view(), name='xray-analyses'),
+    path('xray-analyses/<int:pk>/', XRayAnalysisDetailView.as_view(), name='xray-analysis-detail'),
     
     # Research query URLs
     path('research/', ResearchQueryView.as_view(), name='research'),

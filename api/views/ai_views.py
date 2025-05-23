@@ -2,13 +2,11 @@ from rest_framework import status, permissions, viewsets
 import json
 from ..models import TranslationService
 from rest_framework.response import Response
+from rest_framework.generics import RetrieveAPIView
 from rest_framework.permissions import AllowAny
 from ..AI.praxia_model import (
     PraxiaAI,
-    diagnose_symptoms_task,
     analyze_xray_task,
-    analyze_diet_task,
-    analyze_medication_task,
     scrape_health_news,
 )
 from rest_framework.views import APIView
@@ -60,6 +58,7 @@ class ChatMessageView(APIView):
     """View for creating and retrieving chat messages"""
     permission_classes = [permissions.IsAuthenticated]
     throttle_classes = [AIChatRateThrottle]
+    parser_classes = [MultiPartParser, FormParser]  # Add this to support file uploads
     
     def get(self, request, session_id):
         """Get all messages for a chat session"""
@@ -73,9 +72,13 @@ class ChatMessageView(APIView):
         """Create a new message and get AI response"""
         session = get_object_or_404(ChatSession, id=session_id, user=request.user)
         
+        # Check if there's an image upload
+        xray_image = request.FILES.get('xray_image')
+        message_content = request.data.get('content', '')
+        
         user_message_serializer = ChatMessageSerializer(data={
             'role': 'user',
-            'content': request.data.get('content', '')
+            'content': message_content
         })
         
         if not user_message_serializer.is_valid():
@@ -93,10 +96,39 @@ class ChatMessageView(APIView):
             'allergies': request.user.profile.allergies
         }
         
-        # Synchronous call (for immediate response)
-        praxia = PraxiaAI()
-        ai_response = praxia.diagnose_symptoms(user_message.content, user_profile)
-        # If you want async: result = diagnose_symptoms_task.delay(user_message.content, user_profile).get(timeout=30)
+        ai_response = None
+        
+        # If there's an X-ray image, process it
+        if xray_image:
+            # Create an XRayAnalysis object to track the analysis
+            xray = XRayAnalysis.objects.create(
+                user=request.user,
+                image=xray_image,
+                analysis_result="Processing...",
+                detected_conditions={},
+                confidence_scores={}
+            )
+            
+            # Start asynchronous analysis
+            analyze_xray_task.delay(xray.id, xray.image.path)
+            
+            # Create an initial AI response indicating the analysis is in progress
+            ai_response = {
+                "message": "I'm analyzing your X-ray image. This may take a minute or two.",
+                "xray_analysis_id": xray.id,
+                "status": "processing"
+            }
+            
+            logger.info("X-ray analysis queued from chat", user=request.user.username, xray_id=xray.id)
+        else:
+            # Regular text message processing
+            praxia = PraxiaAI()
+            if "analyze my diet" in message_content.lower() or "diet analysis" in message_content.lower():
+                ai_response = praxia.analyze_diet(message_content, user_profile)
+            elif "medication" in message_content.lower() or "drug interaction" in message_content.lower():
+                ai_response = praxia.analyze_medication(message_content, user_profile)
+            else:
+                ai_response = praxia.diagnose_symptoms(message_content, user_profile)
         
         ai_message = ChatMessage.objects.create(
             session=session,
@@ -197,17 +229,26 @@ class XRayAnalysisView(APIView):
                 confidence_scores={}
             )
             
-            # Asynchronous Celery task for X-ray analysis
-            task = analyze_xray_task.delay(xray.image.path)
-            # Optionally, you can set up a callback or poll for result completion
+            # Pass the xray ID and image path to the Celery task
+            analyze_xray_task.delay(xray.id, xray.image.path)
             
-            logger.info("X-ray analysis queued", user=request.user.username, task_id=task.id)
+            logger.info("X-ray analysis queued", user=request.user.username, xray_id=xray.id)
             return Response(
                 XRayAnalysisSerializer(xray, context={'request': request}).data,
                 status=status.HTTP_201_CREATED
             )
         logger.error("Invalid X-ray data", errors=serializer.errors)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+class XRayAnalysisDetailView(RetrieveAPIView):
+    """View for retrieving a specific X-ray analysis"""
+    permission_classes = [permissions.IsAuthenticated]
+    serializer_class = XRayAnalysisSerializer
+    queryset = XRayAnalysis.objects.all()
+
+    def get_queryset(self):
+        # Only allow users to access their own analyses
+        return XRayAnalysis.objects.filter(user=self.request.user)
 
 class ResearchQueryView(APIView):
     """View for medical research queries"""
