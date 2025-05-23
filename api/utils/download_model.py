@@ -4,6 +4,7 @@ import torch
 import time
 import requests
 from pathlib import Path
+from torchvision.models import densenet121, DenseNet121_Weights
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -22,10 +23,16 @@ def download_and_setup_weights():
             logger.info(f"Model file already exists at {target_path}")
             return
             
-        # Create a simple model with the right architecture
+        # Create a simple model with the right architecture using the updated API
         logger.info("Creating DenseNet121 model...")
-        from torchvision.models import densenet121
-        model = densenet121(pretrained=True)  
+        
+        try:
+            # Use the DEFAULT weights (previously 'pretrained=True')
+            model = densenet121(weights=DenseNet121_Weights.DEFAULT)
+        except Exception as e:
+            # Fallback to downloading without weights if there's an issue
+            logger.warning(f"Error downloading pretrained weights: {str(e)}. Creating model without pretrained weights.")
+            model = densenet121(weights=None)
         
         num_ftrs = model.classifier.in_features
         model.classifier = torch.nn.Linear(num_ftrs, 3) 
@@ -37,11 +44,33 @@ def download_and_setup_weights():
         # Create a success marker file
         Path(os.path.join(target_dir, "download_success.txt")).write_text("Model downloaded successfully")
         
+    except KeyboardInterrupt:
+        logger.error("Download interrupted by user")
+        if os.path.exists(target_path):
+            logger.info("Removing partially downloaded file")
+            os.remove(target_path)
+        raise
     except Exception as e:
         logger.error(f"Error downloading weights: {str(e)}")
         # Create a marker file to indicate failure
         Path(os.path.join(target_dir, "download_failed.txt")).write_text(f"Error: {str(e)}")
         raise
+
+def download_with_progress(url, target_path):
+    """Download a file with progress reporting"""
+    response = requests.get(url, stream=True)
+    total_size = int(response.headers.get('content-length', 0))
+    block_size = 1024  # 1 Kibibyte
+    
+    logger.info(f"Downloading {url} to {target_path}")
+    logger.info(f"File size: {total_size / (1024 * 1024):.2f} MB")
+    
+    with open(target_path, 'wb') as file:
+        for data in response.iter_content(block_size):
+            file.write(data)
+    
+    logger.info("Download complete")
+    return target_path
 
 if __name__ == "__main__":
     # Try multiple times with backoff
@@ -50,6 +79,9 @@ if __name__ == "__main__":
         try:
             logger.info(f"Attempt {attempt} of {max_attempts}")
             download_and_setup_weights()
+            break
+        except KeyboardInterrupt:
+            logger.error("Process interrupted by user")
             break
         except Exception as e:
             if attempt < max_attempts:

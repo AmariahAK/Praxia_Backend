@@ -3,6 +3,7 @@ import requests
 import json
 import pymed
 import numpy as np
+import collections
 import torch
 import structlog
 from datetime import datetime
@@ -78,7 +79,21 @@ class PraxiaAI:
             
             # Try to load the model
             try:
-                self.densenet_model = torch.load(densenet_path, map_location=self.device)
+                # Fix for OrderedDict issue - check the type of loaded object
+                loaded_obj = torch.load(densenet_path, map_location=self.device)
+                
+                # If it's an OrderedDict, it's state_dict, need to create model first
+                if isinstance(loaded_obj, collections.OrderedDict):
+                    from torchvision.models import densenet121
+                    model = densenet121(pretrained=False)
+                    num_ftrs = model.classifier.in_features
+                    model.classifier = torch.nn.Linear(num_ftrs, 3)
+                    model.load_state_dict(loaded_obj)
+                    self.densenet_model = model
+                else:
+                    # It's a full model
+                    self.densenet_model = loaded_obj
+                
                 self.densenet_model.eval()
                 logger.info("DenseNet model loaded successfully")
             except Exception as e:
@@ -129,7 +144,14 @@ class PraxiaAI:
     def _preprocess_symptoms(self, symptoms):
         if not symptoms or len(symptoms.strip()) < 3:
             return "unspecified symptoms"
+        
+        # Clean the input
         cleaned = symptoms.replace('<', '').replace('>', '')
+        
+        if '.' in cleaned and not cleaned.endswith('.'):
+            sentences = [s.strip() for s in cleaned.split('.') if s.strip()]
+            return '. '.join(sentences) + '.'
+        
         return cleaned
 
     def diagnose_symptoms(self, symptoms, user_profile=None):
