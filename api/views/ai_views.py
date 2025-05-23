@@ -3,7 +3,14 @@ import json
 from ..models import TranslationService
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny
-from ..AI.praxia_model import scrape_health_news
+from ..AI.praxia_model import (
+    PraxiaAI,
+    diagnose_symptoms_task,
+    analyze_xray_task,
+    analyze_diet_task,
+    analyze_medication_task,
+    scrape_health_news,
+)
 from rest_framework.views import APIView
 from rest_framework.parsers import MultiPartParser, FormParser
 from django.shortcuts import get_object_or_404
@@ -19,7 +26,6 @@ from ..serializers import (
     HealthNewsSerializer,
     HealthCheckResultSerializer
 )
-from ..AI.praxia_model import PraxiaAI
 from ..middleware.throttling import (
     AIChatRateThrottle,
     AIConsultationRateThrottle,
@@ -87,8 +93,10 @@ class ChatMessageView(APIView):
             'allergies': request.user.profile.allergies
         }
         
+        # Synchronous call (for immediate response)
         praxia = PraxiaAI()
         ai_response = praxia.diagnose_symptoms(user_message.content, user_profile)
+        # If you want async: result = diagnose_symptoms_task.delay(user_message.content, user_profile).get(timeout=30)
         
         ai_message = ChatMessage.objects.create(
             session=session,
@@ -130,7 +138,6 @@ class MedicalConsultationView(APIView):
                 'allergies': request.user.profile.allergies
             }
             
-            # Get symptoms and language
             symptoms = serializer.validated_data['symptoms']
             language = serializer.validated_data.get('language', 'en')
             
@@ -141,21 +148,18 @@ class MedicalConsultationView(APIView):
             else:
                 english_symptoms = symptoms
             
-            # Process with AI
+            # Synchronous call (for immediate response)
             praxia = PraxiaAI()
             diagnosis_result = praxia.diagnose_symptoms(english_symptoms, user_profile)
+            # If you want async: diagnosis_result = diagnose_symptoms_task.delay(english_symptoms, user_profile).get(timeout=30)
             
             # Translate diagnosis back to original language if needed
             if language != 'en' and isinstance(diagnosis_result, dict):
-                # Convert diagnosis to JSON string
                 diagnosis_json = json.dumps(diagnosis_result)
-                # Translate the JSON string
                 translated_diagnosis = translator.translate(diagnosis_json, 'en', language)
-                # Try to parse it back to JSON
                 try:
                     diagnosis_result = json.loads(translated_diagnosis)
                 except json.JSONDecodeError:
-                    # If parsing fails, keep the original diagnosis
                     pass
             
             consultation = serializer.save(
@@ -193,23 +197,11 @@ class XRayAnalysisView(APIView):
                 confidence_scores={}
             )
             
-            # Process the X-ray image asynchronously
-            praxia = PraxiaAI()
-            analysis_task = praxia.analyze_xray.delay(xray.image.path)
+            # Asynchronous Celery task for X-ray analysis
+            task = analyze_xray_task.delay(xray.image.path)
+            # Optionally, you can set up a callback or poll for result completion
             
-            # Set up a callback to update the analysis when complete
-            @analysis_task.on_success
-            def update_analysis(result, *args, **kwargs):
-                if isinstance(result, dict):
-                    xray.analysis_result = json.dumps(result)
-                    if 'detected_conditions' in result:
-                        xray.detected_conditions = result['detected_conditions']
-                    if 'confidence_scores' in result:
-                        xray.confidence_scores = result['confidence_scores']
-                    xray.save()
-                    logger.info("X-ray analysis updated", xray_id=xray.id)
-            
-            logger.info("X-ray analysis queued", user=request.user.username, task_id=analysis_task.id)
+            logger.info("X-ray analysis queued", user=request.user.username, task_id=task.id)
             return Response(
                 XRayAnalysisSerializer(xray, context={'request': request}).data,
                 status=status.HTTP_201_CREATED
@@ -256,14 +248,10 @@ class HealthNewsView(APIView):
         source = request.query_params.get('source', 'all')
         limit = min(int(request.query_params.get('limit', 3)), 10)  # Cap at 10 articles
         
-        # Use the standalone task instead of the class method
+        # Use Celery task, but block for result (or you can return a task id and poll)
         news_task = scrape_health_news.delay(source=source, limit=limit)
-        
         try:
-            # Wait for the task to complete with a timeout
             news_articles = news_task.get(timeout=15)
-            
-            # Save articles to database if they don't exist
             saved_articles = []
             for article in news_articles:
                 obj, created = HealthNews.objects.get_or_create(
@@ -278,18 +266,14 @@ class HealthNewsView(APIView):
                     }
                 )
                 saved_articles.append(HealthNewsSerializer(obj).data)
-            
             logger.info("Health news retrieved", source=source, count=len(saved_articles))
             return Response(saved_articles)
         except Exception as e:
             logger.error("Error retrieving health news", error=str(e))
-            
-            # Fallback: return cached news from database
             articles = HealthNews.objects.filter(source__icontains=source if source != 'all' else '')[:limit]
             if articles.exists():
                 serializer = HealthNewsSerializer(articles, many=True)
                 return Response(serializer.data)
-            
             return Response(
                 {"error": str(e), "message": "Unable to retrieve health news at this time."},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
@@ -306,10 +290,8 @@ class AuthenticatedHealthCheckView(APIView):
         latest_check = HealthCheckResult.objects.order_by('-timestamp').first()
         
         if not latest_check:
-            # If no health check exists, run one now
             from ..AI.ai_healthcheck import scheduled_health_check
             health_data = scheduled_health_check()
-            
             return Response({
                 "timestamp": health_data["timestamp"],
                 "status": health_data["status"],

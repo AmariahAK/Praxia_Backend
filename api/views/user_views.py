@@ -1,7 +1,7 @@
 from rest_framework import status, permissions
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from rest_framework.parsers import MultiPartParser, FormParser
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from django.shortcuts import get_object_or_404
 from ..models import UserProfile
 from ..serializers.user_serializer import UserProfileSerializer, UserProfileUpdateSerializer
@@ -9,7 +9,7 @@ from ..serializers.user_serializer import UserProfileSerializer, UserProfileUpda
 class UserProfileView(APIView):
     """View for retrieving and updating user profile"""
     permission_classes = [permissions.IsAuthenticated]
-    parser_classes = [MultiPartParser, FormParser]
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
     
     def get(self, request):
         """Get the authenticated user's profile"""
