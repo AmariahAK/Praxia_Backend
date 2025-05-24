@@ -307,6 +307,10 @@ INITIALIZE_XRAY_MODEL = config('INITIALIZE_XRAY_MODEL', cast=bool)
 # Health check settings
 HEALTH_CHECK_INTERVAL = config('HEALTH_CHECK_INTERVAL', cast=int, default=21600)  
 
+# Create logs directory if it doesn't exist
+LOGS_DIR = os.path.join(BASE_DIR, 'logs')
+os.makedirs(LOGS_DIR, exist_ok=True)
+
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
@@ -319,11 +323,11 @@ LOGGING = {
         'console': {
             'class': 'logging.StreamHandler',
             'formatter': 'simple',
-            'level': 'ERROR',  # Only show ERROR level and above
+            'level': 'ERROR',  
         },
         'file': {
             'class': 'logging.FileHandler',
-            'filename': '/app/data/error.txt',
+            'filename': os.path.join(LOGS_DIR, 'error.txt'),
             'formatter': 'simple',
             'level': 'ERROR',
         },
