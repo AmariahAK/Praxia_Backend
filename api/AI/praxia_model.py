@@ -299,10 +299,10 @@ class PraxiaAI:
 
     def _preprocess_symptoms(self, symptoms):
         if not symptoms or len(symptoms.strip()) < 3:
-            return "unspecified symptoms"
+            return "general health inquiry"
         
-        # Clean the input
-        cleaned = symptoms.replace('<', '').replace('>', '').strip()
+        # Clean the input more safely
+        cleaned = str(symptoms).replace('<', '').replace('>', '').strip()
         
         # Handle greetings and extract the actual symptoms
         greeting_phrases = ["hey praxia", "hi praxia", "hello", "greetings"]
@@ -310,31 +310,23 @@ class PraxiaAI:
         
         for phrase in greeting_phrases:
             if lower_symptoms.startswith(phrase):
-                # Remove greeting and any separators like commas
                 cleaned = cleaned[len(phrase):].lstrip(" ,.;:!?")
                 break
         
         # Make sure we have valid content
         if not cleaned or len(cleaned.strip()) < 3:
-            return "unspecified symptoms"
+            return "general health inquiry"
         
-        # Fix quote handling to prevent empty separator errors
         cleaned = cleaned.replace("'", "'").replace(""", '"').replace(""", '"')
         
-        # Remove trailing quotes that might cause issues
         cleaned = cleaned.rstrip("'\"")
         
-        # Ensure we don't have empty strings that could cause separator errors
         if not cleaned.strip():
-            return "unspecified symptoms"
+            return "general health inquiry"
         
-        # Handle sentence formatting more safely
-        if '.' in cleaned and not cleaned.endswith('.'):
-            sentences = [s.strip() for s in cleaned.split('.') if s.strip()]
-            if sentences:
-                return '. '.join(sentences) + '.'
+        cleaned = ' '.join(cleaned.split()) 
         
-        return cleaned.strip()
+        return cleaned.strip() if cleaned.strip() else "general health inquiry"
 
     def diagnose_symptoms(self, symptoms, user_profile=None, chat_topic=None):
         try:
@@ -698,30 +690,73 @@ Your response must be valid JSON that can be parsed programmatically.
         if cached_result:
             return cached_result
         try:
+            # Ensure query is a string and not None
+            if not query or not isinstance(query, str):
+                query = "general medical research"
+            
             search_term = f"{query} AND (Review[ptyp] OR Clinical Trial[ptyp])"
             results = self.pubmed_client.query(search_term, max_results=limit)
             articles = []
             for article in results:
+                # Safely handle None values
+                title = getattr(article, 'title', None) or "Research Article"
+                authors = getattr(article, 'authors', None)
+                journal = getattr(article, 'journal', None) or "Medical Journal"
+                
+                # Safely process authors
+                author_str = "Unknown"
+                if authors and isinstance(authors, list):
+                    try:
+                        author_str = ", ".join([
+                            f"{author.get('lastname', '')} {author.get('firstname', [''])[0]}"
+                            for author in authors[:3]  # Limit to first 3 authors
+                            if isinstance(author, dict) and author.get('lastname')
+                        ]) or "Unknown"
+                    except (AttributeError, TypeError, IndexError):
+                        author_str = "Unknown"
+                
+                # Safely handle other attributes
+                pub_date = getattr(article, 'publication_date', None)
+                pub_date_str = str(pub_date) if pub_date else "Unknown"
+                
+                doi = getattr(article, 'doi', None)
+                abstract = getattr(article, 'abstract', None) or "No abstract available"
+                
                 article_data = {
-                    "title": article.title,
-                    "authors": ", ".join([author['lastname'] + ' ' + author['firstname'][0] for
-                        author in article.authors]) if article.authors else "Unknown",
-                    "journal": article.journal,
-                    "publication_date": str(article.publication_date) if hasattr(article, 'publication_date') else "Unknown",
-                    "doi": article.doi if hasattr(article, 'doi') else None,
-                    "abstract": article.abstract if hasattr(article, 'abstract') else "No abstract available"
+                    "title": title,
+                    "authors": author_str,
+                    "journal": journal,
+                    "publication_date": pub_date_str,
+                    "doi": doi,
+                    "abstract": abstract
                 }
                 articles.append(article_data)
+            
             cache.set(cache_key, articles, self.cache_timeout)
             logger.info("Medical research retrieved successfully", query=query, count=len(articles))
             return articles
         except Exception as e:
             logger.warning("Error retrieving medical research", error=str(e), query=query)
+            # Return safe placeholder results
             placeholder_results = [
-                {"title": "Recent advances in medical diagnosis and treatment", "authors": "Smith J, et al.", "journal": "Medical Journal", "publication_date": "2023"},
-                {"title": "Clinical guidelines for symptom management", "authors": "Johnson M, et al.", "journal": "Healthcare Research", "publication_date": "2022"}
+                {
+                    "title": "Recent advances in medical diagnosis and treatment", 
+                    "authors": "Smith J, et al.", 
+                    "journal": "Medical Journal", 
+                    "publication_date": "2023",
+                    "doi": None,
+                    "abstract": "Recent research in medical diagnosis and treatment methods."
+                },
+                {
+                    "title": "Clinical guidelines for symptom management", 
+                    "authors": "Johnson M, et al.", 
+                    "journal": "Healthcare Research", 
+                    "publication_date": "2022",
+                    "doi": None,
+                    "abstract": "Clinical guidelines for effective symptom management and patient care."
+                }
             ]
-            return placeholder_results
+            return placeholder_results[:limit]
 
     def analyze_diet(self, diet_info, user_profile=None):
         if not diet_info or len(diet_info.strip()) < 5:
@@ -897,7 +932,7 @@ Your response must be valid JSON that can be parsed programmatically.
         try:
             articles = []
             
-            # Expanded sources list
+            # Expanded sources list with better error handling
             sources_to_try = []
             if source in ['who', 'all']:
                 sources_to_try.append(('who', self._scrape_who_news))
@@ -911,56 +946,56 @@ Your response must be valid JSON that can be parsed programmatically.
                 try:
                     logger.info(f"Attempting to scrape from {src_name}")
                     src_articles = scrape_func(limit=limit if source == src_name else max(1, limit // len(sources_to_try)))
-                    if src_articles:
+                    if src_articles and isinstance(src_articles, list):
                         articles.extend(src_articles)
                         logger.info(f"Successfully retrieved {len(src_articles)} articles from {src_name}")
                     else:
                         logger.warning(f"No articles found from {src_name}")
                 except Exception as e:
-                    logger.error(f"Failed to scrape {src_name}", error=str(e), exc_info=True)
+                    logger.error(f"Failed to scrape {src_name}", error=str(e))
                     continue
             
             # Add fallback if no articles found
             if not articles:
                 logger.warning("No articles found from any source, using fallback data")
-                articles = [
-                    {
-                        "title": "COVID-19 Updates and Prevention Measures",
-                        "source": "WHO",
-                        "url": "https://www.who.int/emergencies/diseases/novel-coronavirus-2019",
-                        "summary": "Latest information on COVID-19 prevention, symptoms, and global statistics.",
-                        "content": "COVID-19 continues to be a global health concern. Vaccination, proper hygiene, and social distancing remain effective preventive measures.",
-                        "published_date": datetime.now().strftime("%Y-%m-%d")
-                    },
-                    {
-                        "title": "Managing Chronic Conditions During Healthcare Disruptions",
-                        "source": "CDC",
-                        "url": "https://www.cdc.gov/",
-                        "summary": "Guidance for patients with chronic conditions during healthcare system disruptions.",
-                        "content": "Patients with chronic conditions should maintain medication supplies, use telehealth when possible, and have emergency plans in place.",
-                        "published_date": datetime.now().strftime("%Y-%m-%d")
-                    },
-                    {
-                        "title": "Seasonal Illness Prevention Strategies",
-                        "source": "Mayo Clinic",
-                        "url": "https://www.mayoclinic.org/",
-                        "summary": "Tips for preventing common seasonal illnesses and maintaining good health.",
-                        "content": "Regular handwashing, adequate sleep, proper nutrition, and staying up-to-date with vaccinations help prevent seasonal illnesses.",
-                        "published_date": datetime.now().strftime("%Y-%m-%d")
+                articles = self._get_fallback_health_news(limit)
+            
+            # Process articles safely
+            processed_articles = []
+            for article in articles[:limit]:
+                try:
+                    if not isinstance(article, dict):
+                        continue
+                        
+                    processed_article = {
+                        'title': article.get('title', 'Health News Update'),
+                        'source': article.get('source', 'Health Authority'),
+                        'url': article.get('url', '#'),
+                        'content': article.get('content', 'Health information update'),
+                        'image_url': article.get('image_url'),
+                        'published_date': article.get('published_date', datetime.now().strftime("%Y-%m-%d"))
                     }
-                ][:limit]
+                    
+                    # Generate summary safely
+                    content = processed_article.get('content', '')
+                    if content and len(content) > 500:
+                        try:
+                            processed_article['summary'] = self._summarize_article(content)
+                        except Exception as e:
+                            logger.warning(f"Failed to summarize article: {str(e)}")
+                            processed_article['summary'] = content[:200] + "..."
+                    else:
+                        processed_article['summary'] = content
+                    
+                    processed_articles.append(processed_article)
+                except Exception as e:
+                    logger.warning(f"Error processing article: {str(e)}")
+                    continue
             
-            # Process articles
-            for article in articles:
-                if 'content' in article and article['content']:
-                    article['summary'] = self._summarize_article(article['content'])
-                else:
-                    article['summary'] = "No content available for summarization."
-            
-            cache.set(cache_key, articles, 60 * 60 * 12)
-            return articles
+            cache.set(cache_key, processed_articles, 60 * 60 * 12)
+            return processed_articles
         except Exception as e:
-            logger.error("Error scraping health news", error=str(e), exc_info=True)
+            logger.error("Error scraping health news", error=str(e))
             return self._get_fallback_health_news(limit)
 
     def _get_fallback_health_news(self, limit=3):
@@ -978,6 +1013,7 @@ Your response must be valid JSON that can be parsed programmatically.
                 "source": "CDC",
                 "url": "https://www.cdc.gov/",
                 "summary": "Guidance for patients with chronic conditions during healthcare system disruptions.",
+                "content": "Patients with chronic conditions should maintain medication supplies, use telehealth when possible, and have emergency plans in place.",
                 "published_date": datetime.now().strftime("%Y-%m-%d")
             },
             {
@@ -985,6 +1021,7 @@ Your response must be valid JSON that can be parsed programmatically.
                 "source": "Mayo Clinic",
                 "url": "https://www.mayoclinic.org/",
                 "summary": "Tips for preventing common seasonal illnesses and maintaining good health.",
+                "content": "Regular handwashing, adequate sleep, proper nutrition, and staying up-to-date with vaccinations help prevent seasonal illnesses.",
                 "published_date": datetime.now().strftime("%Y-%m-%d")
             }
         ][:limit]

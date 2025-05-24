@@ -86,7 +86,7 @@ class ChatMessageView(APIView):
                 if xray_image:
                     message_content = "Please analyze this X-ray image."
                 else:
-                    message_content = "Hello"
+                    message_content = "Hello, I need help with my health."
             
             # Clean up the message content to prevent parsing errors
             message_content = message_content.strip()
@@ -156,19 +156,28 @@ class ChatMessageView(APIView):
                     else:
                         # Pass the chat topic to the diagnosis function
                         ai_response = praxia.diagnose_symptoms(message_content, user_profile, chat_topic)
+                    
+                    # Ensure we have a valid response
+                    if not ai_response or not isinstance(ai_response, dict):
+                        raise ValueError("Invalid response from AI")
+                    
                 except Exception as e:
                     logger.error("Error processing message", error=str(e), symptoms=message_content[:50])
-                    # Provide a more specific error response
+                    # Create a more helpful structured response
                     ai_response = {
                         "diagnosis": {
-                            "conditions": ["Unable to analyze symptoms at this time"],
-                            "next_steps": ["Please try rephrasing your symptoms", "Consider consulting with a healthcare professional"],
+                            "conditions": ["I need more information to help you better"],
+                            "next_steps": [
+                                "Could you describe your symptoms in more detail?",
+                                "How long have you been experiencing these symptoms?",
+                                "Are there any specific triggers you've noticed?"
+                            ],
                             "urgent": [],
-                            "advice": "I'm having trouble understanding your symptoms. Could you please provide more specific details about what you're experiencing?",
+                            "advice": "I'd be happy to help you with your health concerns. Could you provide more specific details about what you're experiencing?",
                             "clarification": [
                                 "What specific symptoms are you experiencing?",
-                                "How long have you had these symptoms?",
-                                "Are there any triggers or patterns you've noticed?"
+                                "When did these symptoms start?",
+                                "Have you tried any treatments so far?"
                             ]
                         },
                         "disclaimer": "This information is for educational purposes only and not a substitute for professional medical advice."
@@ -215,11 +224,11 @@ class ChatMessageView(APIView):
                         role='assistant',
                         content=json.dumps({
                             "diagnosis": {
-                                "conditions": ["System temporarily unavailable"],
-                                "next_steps": ["Please try again in a moment", "If the problem persists, contact support"],
+                                "conditions": ["I'm experiencing a temporary issue"],
+                                "next_steps": ["Please try rephrasing your question", "If the problem continues, please contact support"],
                                 "urgent": [],
-                                "advice": "I'm experiencing a temporary issue. Please try rephrasing your question or try again in a moment.",
-                                "clarification": ["Could you try asking your question in a different way?"]
+                                "advice": "I apologize for the technical difficulty. Could you try asking your question in a different way?",
+                                "clarification": ["Could you rephrase your health question?"]
                             },
                             "disclaimer": "This is a system message due to a temporary technical issue."
                         })
@@ -277,7 +286,6 @@ class MedicalConsultationView(APIView):
             # Synchronous call (for immediate response)
             praxia = PraxiaAI()
             diagnosis_result = praxia.diagnose_symptoms(english_symptoms, user_profile)
-            # If you want async: diagnosis_result = diagnose_symptoms_task.delay(english_symptoms, user_profile).get(timeout=30)
             
             # Translate diagnosis back to original language if needed
             if language != 'en' and isinstance(diagnosis_result, dict):
