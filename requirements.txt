@@ -45,3 +45,4 @@ pyotp
 qrcode
 django-otp
 torchxrayvision
+feedparser

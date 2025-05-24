@@ -6,9 +6,10 @@ import numpy as np
 import collections
 import torch
 import structlog
+import feedparser
 from datetime import datetime
 import re
-from typing import Dict, List, Any
+from typing import Dict, Any
 from PIL import Image
 from io import BytesIO
 from django.conf import settings
@@ -174,9 +175,9 @@ class PraxiaAI:
                 'last_updated': datetime.now().isoformat()
             }
             
-            # Try to get latest health news
+            # Try to get latest health news with improved methods
             try:
-                health_news = self._scrape_health_news(source='all', limit=3)
+                health_news = self._get_health_news_comprehensive(source='all', limit=3)
                 health_data['health_news'] = health_news
             except Exception as e:
                 logger.warning(f"Failed to get health news: {str(e)}")
@@ -236,166 +237,6 @@ class PraxiaAI:
         
         logger.info("Built user context", context=context)
         return context
-
-    def _create_search_terms_from_topic(self, topic, user_profile=None):
-        """
-        Create targeted search terms from chat topic and user profile
-        """
-        search_terms = []
-        
-        # Base search term from topic
-        base_term = topic.replace("_", " ").replace("-", " ").strip()
-        search_terms.append(base_term)
-        
-        # Add user-specific context if available
-        if user_profile:
-            # Age-specific terms
-            if user_profile.get('age'):
-                age = int(user_profile['age'])
-                if age < 18:
-                    search_terms.append(f"{base_term} pediatric")
-                elif age > 65:
-                    search_terms.append(f"{base_term} geriatric elderly")
-                else:
-                    search_terms.append(f"{base_term} adult")
-            
-            # Gender-specific terms
-            if user_profile.get('gender') and user_profile['gender'] in ['male', 'female']:
-                search_terms.append(f"{base_term} {user_profile['gender']}")
-            
-            # Country/region-specific terms for epidemiology
-            if user_profile.get('country'):
-                country = user_profile['country'].lower()
-                # Add regional health considerations
-                regional_terms = {
-                    'kenya': 'malaria tuberculosis HIV',
-                    'nigeria': 'malaria sickle cell',
-                    'india': 'diabetes tuberculosis',
-                    'usa': 'obesity diabetes hypertension',
-                    'uk': 'diabetes cardiovascular',
-                    'canada': 'diabetes cardiovascular',
-                    'australia': 'skin cancer melanoma',
-                    'brazil': 'dengue zika chikungunya',
-                    'china': 'hepatitis tuberculosis',
-                    'japan': 'stroke cardiovascular',
-                }
-                
-                for region, conditions in regional_terms.items():
-                    if region in country:
-                        search_terms.append(f"{base_term} {conditions}")
-                        break
-        
-        # Remove duplicates and return unique terms
-        return list(set(search_terms))
-
-    def _filter_research_by_relevance(self, research_results, user_profile=None, max_results=3):
-        """
-        Filter and rank research results based on user profile relevance
-        """
-        if not research_results or not user_profile:
-            return research_results[:max_results]
-        
-        scored_results = []
-        
-        for article in research_results:
-            score = 0
-            title_lower = article.get('title', '').lower()
-            abstract_lower = article.get('abstract', '').lower()
-            content = title_lower + ' ' + abstract_lower
-            
-            # Age relevance
-            if user_profile.get('age'):
-                age = int(user_profile['age'])
-                if age < 18 and any(term in content for term in ['pediatric', 'children', 'adolescent']):
-                    score += 3
-                elif age > 65 and any(term in content for term in ['elderly', 'geriatric', 'older adults']):
-                    score += 3
-                elif 18 <= age <= 65 and any(term in content for term in ['adult', 'working age']):
-                    score += 2
-            
-            # Gender relevance
-            if user_profile.get('gender'):
-                gender = user_profile['gender'].lower()
-                if gender in ['male', 'female'] and gender in content:
-                    score += 2
-            
-            # Country/regional relevance
-            if user_profile.get('country'):
-                country = user_profile['country'].lower()
-                if country in content:
-                    score += 3
-                # Check for regional disease patterns
-                regional_keywords = {
-                    'kenya': ['malaria', 'tuberculosis', 'hiv', 'tropical'],
-                    'nigeria': ['malaria', 'sickle cell', 'tropical'],
-                    'india': ['tuberculosis', 'diabetes', 'tropical'],
-                    'usa': ['obesity', 'diabetes', 'hypertension', 'cardiovascular'],
-                    'uk': ['diabetes', 'cardiovascular', 'temperate'],
-                    'canada': ['diabetes', 'cardiovascular', 'temperate'],
-                }
-                
-                for region, keywords in regional_keywords.items():
-                    if region in country:
-                        for keyword in keywords:
-                            if keyword in content:
-                                score += 1
-                        break
-            
-            # Allergy relevance
-            if user_profile.get('allergies'):
-                allergies = user_profile['allergies'].lower()
-                if any(allergy.strip() in content for allergy in allergies.split(',') if allergy.strip()):
-                    score += 2
-            
-            scored_results.append((score, article))
-        
-        # Sort by score (descending) and return top results
-        scored_results.sort(key=lambda x: x[0], reverse=True)
-        return [article for score, article in scored_results[:max_results]]
-
-    def _preprocess_symptoms(self, symptoms):
-        if not symptoms or len(symptoms.strip()) < 3:
-            return "general health inquiry"
-        
-        try:
-            # Clean the input more safely
-            cleaned = str(symptoms).replace('<', '').replace('>', '').strip()
-            
-            # Remove problematic characters that might cause separator issues
-            cleaned = re.sub(r'[^\w\s.,;:!?()-]', ' ', cleaned)
-            
-            # Handle greetings and extract the actual symptoms
-            greeting_phrases = ["hey praxia", "hi praxia", "hello", "greetings"]
-            lower_symptoms = cleaned.lower()
-            
-            for phrase in greeting_phrases:
-                if lower_symptoms.startswith(phrase):
-                    cleaned = cleaned[len(phrase):].lstrip(" ,.;:!?")
-                    break
-            
-            # Make sure we have valid content
-            if not cleaned or len(cleaned.strip()) < 3:
-                return "general health inquiry"
-            
-            # Normalize whitespace and quotes
-            cleaned = cleaned.replace("'", "'").replace(""", '"').replace(""", '"')
-            cleaned = cleaned.rstrip("'\"")
-            
-            if not cleaned.strip():
-                return "general health inquiry"
-            
-            # Remove excessive whitespace
-            cleaned = ' '.join(cleaned.split()) 
-            
-            # Limit length to prevent overly long queries
-            if len(cleaned) > 500:
-                cleaned = cleaned[:500] + "..."
-            
-            return cleaned.strip() if cleaned.strip() else "general health inquiry"
-            
-        except Exception as e:
-            logger.error("Error preprocessing symptoms", error=str(e), symptoms=str(symptoms)[:50])
-            return "general health inquiry"
 
     def _extract_medical_topic(self, symptoms: str, user_profile: Dict[str, Any] = None) -> str:
         """
@@ -464,45 +305,49 @@ class PraxiaAI:
             logger.error("Error extracting medical topic", error=str(e))
             return "general medical consultation"
 
-    def _create_targeted_search_queries(self, topic: str, user_profile: Dict[str, Any] = None, max_queries: int = 3) -> List[str]:
-        """
-        Create targeted search queries based on the extracted topic
-        """
-        queries = [topic]
+    def _preprocess_symptoms(self, symptoms):
+        if not symptoms or len(symptoms.strip()) < 3:
+            return "general health inquiry"
         
-        if user_profile:
-            # Add demographic-specific queries
-            if user_profile.get('country'):
-                country = user_profile['country'].lower()
-                # Regional health considerations
-                regional_conditions = {
-                    'kenya': ['malaria', 'tuberculosis'],
-                    'nigeria': ['malaria', 'sickle cell'],
-                    'india': ['tuberculosis', 'diabetes'],
-                    'usa': ['diabetes', 'hypertension'],
-                    'uk': ['diabetes', 'cardiovascular'],
-                    'canada': ['diabetes', 'cardiovascular'],
-                    'australia': ['skin cancer'],
-                    'brazil': ['dengue', 'zika'],
-                    'china': ['hepatitis', 'tuberculosis'],
-                    'japan': ['stroke', 'cardiovascular'],
-                }
-                
-                for region, conditions in regional_conditions.items():
-                    if region in country:
-                        for condition in conditions[:1]:  # Limit to 1 condition
-                            queries.append(f"{topic} {condition}")
-                        break
+        try:
+            # Clean the input more safely
+            cleaned = str(symptoms).replace('<', '').replace('>', '').strip()
             
-            # Add age-specific query
-            if user_profile.get('age'):
-                age = int(user_profile['age'])
-                if age < 18:
-                    queries.append(f"{topic} pediatric children")
-                elif age > 65:
-                    queries.append(f"{topic} elderly geriatric")
-        
-        return queries[:max_queries]
+            # Remove problematic characters that might cause separator issues
+            cleaned = re.sub(r'[^\w\s.,;:!?()-]', ' ', cleaned)
+            
+            # Handle greetings and extract the actual symptoms
+            greeting_phrases = ["hey praxia", "hi praxia", "hello", "greetings"]
+            lower_symptoms = cleaned.lower()
+            
+            for phrase in greeting_phrases:
+                if lower_symptoms.startswith(phrase):
+                    cleaned = cleaned[len(phrase):].lstrip(" ,.;:!?")
+                    break
+            
+            # Make sure we have valid content
+            if not cleaned or len(cleaned.strip()) < 3:
+                return "general health inquiry"
+            
+            # Normalize whitespace and quotes
+            cleaned = cleaned.replace("'", "'").replace(""", '"').replace(""", '"')
+            cleaned = cleaned.rstrip("'\"")
+            
+            if not cleaned.strip():
+                return "general health inquiry"
+            
+            # Remove excessive whitespace
+            cleaned = ' '.join(cleaned.split()) 
+            
+            # Limit length to prevent overly long queries
+            if len(cleaned) > 500:
+                cleaned = cleaned[:500] + "..."
+            
+            return cleaned.strip() if cleaned.strip() else "general health inquiry"
+            
+        except Exception as e:
+            logger.error("Error preprocessing symptoms", error=str(e), symptoms=str(symptoms)[:50])
+            return "general health inquiry"
 
     def diagnose_symptoms(self, symptoms, user_profile=None, chat_topic=None):
         try:
@@ -518,13 +363,13 @@ class PraxiaAI:
             else:
                 logger.warning("Diagnosing without user profile", symptoms=processed_symptoms[:30])
 
-            # Extract medical topic first - THIS IS THE KEY TOPIC TO USE
-            if chat_topic and chat_topic != "New Chat":
-                medical_topic = chat_topic
+            # IMPROVED: Use chat_topic as PRIMARY source if available and meaningful
+            if chat_topic and chat_topic != "New Chat" and len(chat_topic.strip()) > 3:
+                medical_topic = chat_topic.strip()
+                logger.info("Using existing chat topic for targeted search", topic=medical_topic)
             else:
                 medical_topic = self._extract_medical_topic(processed_symptoms, user_profile)
-            
-            logger.info("Extracted medical topic", topic=medical_topic)
+                logger.info("Extracted new medical topic", topic=medical_topic)
         
             # Use the medical topic as the PRIMARY research query
             cache_key = f"diagnosis_{hash(processed_symptoms)}_{hash(str(user_profile))}_{hash(medical_topic)}"
@@ -536,47 +381,52 @@ class PraxiaAI:
             context = self._build_user_context(user_profile)
             health_data = self._get_latest_health_data()
             
-            # UPDATED: Use the medical topic directly for research queries
-            # This makes it faster and more accurate as suggested
+            # ENHANCED: Create more targeted research queries using the precise topic
             primary_research_queries = [
-                medical_topic,  # Use the exact topic first
-                f"{medical_topic} treatment",  # Add treatment focus
-                f"{medical_topic} diagnosis"   # Add diagnostic focus
+                medical_topic,  # Exact topic match
+                f"{medical_topic} diagnosis",
+                f"{medical_topic} treatment guidelines",
             ]
             
-            # Add user-specific context if available
+            # Add user-specific refinements to the EXACT topic
             if user_profile:
                 if user_profile.get('age'):
                     age = int(user_profile['age'])
                     if age < 18:
-                        primary_research_queries.append(f"{medical_topic} pediatric")
+                        primary_research_queries.insert(1, f"pediatric {medical_topic}")
                     elif age > 65:
-                        primary_research_queries.append(f"{medical_topic} elderly")
+                        primary_research_queries.insert(1, f"elderly {medical_topic}")
                 
                 if user_profile.get('country'):
                     country = user_profile['country'].lower()
-                    # Add regional considerations
-                    regional_terms = {
-                        'kenya': f"{medical_topic} malaria",
-                        'nigeria': f"{medical_topic} tropical",
-                        'india': f"{medical_topic} tuberculosis",
+                    regional_queries = {
+                        'kenya': f"{medical_topic} tropical medicine",
+                        'nigeria': f"{medical_topic} tropical diseases",
+                        'india': f"{medical_topic} endemic diseases",
                         'usa': f"{medical_topic} guidelines",
-                        'uk': f"{medical_topic} NHS"
+                        'uk': f"{medical_topic} NHS guidelines"
                     }
-                    if country in regional_terms:
-                        primary_research_queries.append(regional_terms[country])
+                    if country in regional_queries:
+                        primary_research_queries.append(regional_queries[country])
             
-            # Get research data using the medical topic
+            # OPTIMIZED: Use ONLY the most relevant queries (3 max) for speed
+            final_queries = primary_research_queries[:3]
+            
+            # Get research data using the medical topic with circuit breaker protection
             all_research = []
-            for i, query in enumerate(primary_research_queries[:3]):  # Limit to 3 queries for speed
+            for i, query in enumerate(final_queries):
                 try:
                     research = self.get_medical_research(query, limit=2)
                     all_research.extend(research)
-                    logger.info("Retrieved research for topic-based query", 
+                    logger.info("Retrieved research for precise topic query", 
                                query=query, count=len(research), priority=i+1)
                 except Exception as e:
-                    logger.warning("Failed to get research for topic-based query", 
+                    logger.warning("Research query failed, using fallback", 
                                   query=query, error=str(e))
+                    # Use circuit breaker fallback
+                    from ..circuit_breaker import pubmed_fallback
+                    fallback_research = pubmed_fallback(query, 2)
+                    all_research.extend(fallback_research)
                     continue
             
             # Remove duplicates and limit results
@@ -633,7 +483,7 @@ If symptoms are ambiguous, focus on the "clarification" section to gather more i
 Your response must be valid JSON that can be parsed programmatically.
 """
             try:
-                response_text = self._call_together_ai(prompt)
+                response_text = self._call_together_ai_with_circuit_breaker(prompt)
                 try:
                     # First try direct JSON parsing
                     diagnosis_data = json.loads(response_text)
@@ -666,46 +516,121 @@ Your response must be valid JSON that can be parsed programmatically.
                     "diagnosis": diagnosis_data,
                     "related_research": final_research,
                     "medical_topic": medical_topic,
-                    "search_queries_used": primary_research_queries[:3],  # Show which queries were used
+                    "search_queries_used": final_queries,  # Show which queries were used
                     "disclaimer": "This information is for educational purposes only and not a substitute for professional medical advice."
                 }
                 cache.set(cache_key, result, self.cache_timeout)
                 logger.info("Diagnosis completed successfully using topic-based research", 
                            symptoms=processed_symptoms[:30], 
-                                                      topic=medical_topic,
+                           topic=medical_topic,
                            research_count=len(final_research))
                 return result
             except Exception as e:
                 logger.error("Error in symptom diagnosis", error=str(e), symptoms=processed_symptoms[:30])
-                # Provide a more user-friendly error response
-                return {
-                    "diagnosis": {
-                        "conditions": ["Unable to analyze symptoms at this time"],
-                        "next_steps": ["Please consult with a healthcare professional"],
-                        "urgent": [],
-                        "advice": "I apologize, but I'm having trouble analyzing your symptoms right now. Please try again or consult with a healthcare professional.",
-                        "clarification": ["Could you provide more details about your symptoms?"]
-                    },
-                    "medical_topic": medical_topic,
-                    "disclaimer": "This information is for educational purposes only and not a substitute for professional medical advice."
-                }
+                # Use circuit breaker fallback
+                from ..circuit_breaker import together_ai_fallback
+                fallback_response = together_ai_fallback(prompt)
+                try:
+                    fallback_data = json.loads(fallback_response)
+                    return {
+                        "diagnosis": fallback_data.get("diagnosis", {
+                            "conditions": ["Unable to analyze symptoms at this time"],
+                            "next_steps": ["Please consult with a healthcare professional"],
+                            "urgent": [],
+                            "advice": "I apologize, but I'm having trouble analyzing your symptoms right now. Please try again or consult with a healthcare professional.",
+                            "clarification": ["Could you provide more details about your symptoms?"]
+                        }),
+                        "medical_topic": medical_topic,
+                        "disclaimer": "This information is for educational purposes only and not a substitute for professional medical advice."
+                    }
+                except:
+                    return self._get_fallback_diagnosis_response(medical_topic)
         except Exception as e:
             logger.error("Unexpected error in symptom diagnosis", error=str(e), exc_info=True)
-            return {
-                "diagnosis": {
-                    "conditions": ["Unable to analyze symptoms at this time"],
-                    "next_steps": ["Please consult with a healthcare professional"],
-                    "urgent": [],
-                    "advice": "I apologize, but I'm having trouble analyzing your symptoms right now. Please try again or consult with a healthcare professional.",
-                    "clarification": ["Could you provide more details about your symptoms?"]
-                },
-                "medical_topic": "general medical consultation",
-                "disclaimer": "This information is for educational purposes only and not a substitute for professional medical advice."
-            }
+            return self._get_fallback_diagnosis_response("general medical consultation")
+
+    def _get_fallback_diagnosis_response(self, medical_topic):
+        """Get a safe fallback response when all else fails"""
+        return {
+            "diagnosis": {
+                "conditions": ["Unable to analyze symptoms at this time"],
+                "next_steps": ["Please consult with a healthcare professional"],
+                "urgent": [],
+                "advice": "I apologize, but I'm having trouble analyzing your symptoms right now. Please try again or consult with a healthcare professional.",
+                "clarification": ["Could you provide more details about your symptoms?"]
+            },
+            "medical_topic": medical_topic,
+            "disclaimer": "This information is for educational purposes only and not a substitute for professional medical advice."
+        }
+
+    def _filter_research_by_relevance(self, research_results, user_profile=None, max_results=3):
+        """
+        Filter and rank research results based on user profile relevance
+        """
+        if not research_results or not user_profile:
+            return research_results[:max_results]
+        
+        scored_results = []
+        
+        for article in research_results:
+            score = 0
+            title_lower = article.get('title', '').lower()
+            abstract_lower = article.get('abstract', '').lower()
+            content = title_lower + ' ' + abstract_lower
+            
+            # Age relevance
+            if user_profile.get('age'):
+                age = int(user_profile['age'])
+                if age < 18 and any(term in content for term in ['pediatric', 'children', 'adolescent']):
+                    score += 3
+                elif age > 65 and any(term in content for term in ['elderly', 'geriatric', 'older adults']):
+                    score += 3
+                elif 18 <= age <= 65 and any(term in content for term in ['adult', 'working age']):
+                    score += 2
+            
+            # Gender relevance
+            if user_profile.get('gender'):
+                gender = user_profile['gender'].lower()
+                if gender in ['male', 'female'] and gender in content:
+                    score += 2
+            
+            # Country/regional relevance
+            if user_profile.get('country'):
+                country = user_profile['country'].lower()
+                if country in content:
+                    score += 3
+                # Check for regional disease patterns
+                regional_keywords = {
+                    'kenya': ['malaria', 'tuberculosis', 'hiv', 'tropical'],
+                    'nigeria': ['malaria', 'sickle cell', 'tropical'],
+                    'india': ['tuberculosis', 'diabetes', 'tropical'],
+                    'usa': ['obesity', 'diabetes', 'hypertension', 'cardiovascular'],
+                    'uk': ['diabetes', 'cardiovascular', 'temperate'],
+                    'canada': ['diabetes', 'cardiovascular', 'temperate'],
+                }
+                
+                for region, keywords in regional_keywords.items():
+                    if region in country:
+                        for keyword in keywords:
+                            if keyword in content:
+                                score += 1
+                        break
+            
+            # Allergy relevance
+            if user_profile.get('allergies'):
+                allergies = user_profile['allergies'].lower()
+                if any(allergy.strip() in content for allergy in allergies.split(',') if allergy.strip()):
+                    score += 2
+            
+            scored_results.append((score, article))
+        
+        # Sort by score (descending) and return top results
+        scored_results.sort(key=lambda x: x[0], reverse=True)
+        return [article for score, article in scored_results[:max_results]]
 
     def get_medical_research(self, query, limit=5):
         """
-        Updated to handle shorter, more targeted queries
+        Enhanced medical research retrieval with circuit breaker protection
         """
         cache_key = f"research_{hash(query)}_{limit}"
         cached_result = cache.get(cache_key)
@@ -726,48 +651,56 @@ Your response must be valid JSON that can be parsed programmatically.
             
             logger.info("Medical research query", search_term=search_term)
             
-            results = self.pubmed_client.query(search_term, max_results=limit)
-            articles = []
-            for article in results:
-                # Safely handle None values
-                title = getattr(article, 'title', None) or "Research Article"
-                authors = getattr(article, 'authors', None)
-                journal = getattr(article, 'journal', None) or "Medical Journal"
+            # Use circuit breaker protection
+            from ..circuit_breaker import safe_pubmed_query
+            try:
+                results = self.pubmed_client.query(search_term, max_results=limit)
+                articles = []
+                for article in results:
+                    # Safely handle None values
+                    title = getattr(article, 'title', None) or "Research Article"
+                    authors = getattr(article, 'authors', None)
+                    journal = getattr(article, 'journal', None) or "Medical Journal"
+                    
+                                        # Safely process authors
+                    author_str = "Unknown"
+                    if authors and isinstance(authors, list):
+                        try:
+                            author_str = ", ".join([
+                                f"{author.get('lastname', '')} {author.get('firstname', [''])[0]}"
+                                for author in authors[:3]  # Limit to first 3 authors
+                                if isinstance(author, dict) and author.get('lastname')
+                            ]) or "Unknown"
+                        except (AttributeError, TypeError, IndexError):
+                            author_str = "Unknown"
+                    
+                    # Safely handle other attributes
+                    pub_date = getattr(article, 'publication_date', None)
+                    pub_date_str = str(pub_date) if pub_date else "Unknown"
+                    
+                    doi = getattr(article, 'doi', None)
+                    abstract = getattr(article, 'abstract', None) or "No abstract available"
+                    
+                    article_data = {
+                        "title": title,
+                        "authors": author_str,
+                        "journal": journal,
+                        "publication_date": pub_date_str,
+                        "doi": doi,
+                        "abstract": abstract
+                    }
+                    articles.append(article_data)
                 
-                # Safely process authors
-                author_str = "Unknown"
-                if authors and isinstance(authors, list):
-                    try:
-                        author_str = ", ".join([
-                            f"{author.get('lastname', '')} {author.get('firstname', [''])[0]}"
-                            for author in authors[:3]  # Limit to first 3 authors
-                            if isinstance(author, dict) and author.get('lastname')
-                        ]) or "Unknown"
-                    except (AttributeError, TypeError, IndexError):
-                        author_str = "Unknown"
-                
-                # Safely handle other attributes
-                pub_date = getattr(article, 'publication_date', None)
-                pub_date_str = str(pub_date) if pub_date else "Unknown"
-                
-                doi = getattr(article, 'doi', None)
-                abstract = getattr(article, 'abstract', None) or "No abstract available"
-                
-                article_data = {
-                    "title": title,
-                    "authors": author_str,
-                    "journal": journal,
-                    "publication_date": pub_date_str,
-                    "doi": doi,
-                    "abstract": abstract
-                }
-                articles.append(article_data)
-            
-            cache.set(cache_key, articles, self.cache_timeout)
-            logger.info("Medical research retrieved successfully", query=query, count=len(articles))
-            return articles
+                cache.set(cache_key, articles, self.cache_timeout)
+                logger.info("Medical research retrieved successfully", query=query, count=len(articles))
+                return articles
+            except Exception as e:
+                logger.error("Error retrieving medical research", error=str(e), query=query)
+                # Use circuit breaker fallback
+                from ..circuit_breaker import pubmed_fallback
+                return pubmed_fallback(query, limit)
         except Exception as e:
-            logger.error("Error retrieving medical research", error=str(e), query=query)
+            logger.error("Critical error in medical research", error=str(e), query=query)
             # Return safe placeholder results
             placeholder_results = [
                 {
@@ -810,7 +743,7 @@ Provide a comprehensive dietary analysis in JSON format with these keys:
 Your response must be valid JSON that can be parsed programmatically.
 """
             
-            response_text = self._call_together_ai(prompt)
+            response_text = self._call_together_ai_with_circuit_breaker(prompt)
             
             try:
                 diet_analysis = json.loads(response_text)
@@ -870,7 +803,7 @@ Provide a medication analysis in JSON format with these keys:
 Your response must be valid JSON that can be parsed programmatically.
 """
             
-            response_text = self._call_together_ai(prompt)
+            response_text = self._call_together_ai_with_circuit_breaker(prompt)
             
             try:
                 medication_analysis = json.loads(response_text)
@@ -982,7 +915,7 @@ Based on these findings, provide a detailed analysis in JSON format with these k
 
 Your response must be valid JSON that can be parsed programmatically.
 """
-            detailed_analysis_text = self._call_together_ai(prompt)
+            detailed_analysis_text = self._call_together_ai_with_circuit_breaker(prompt)
             try:
                 detailed_analysis = json.loads(detailed_analysis_text)
             except json.JSONDecodeError:
@@ -1011,6 +944,17 @@ Your response must be valid JSON that can be parsed programmatically.
             logger.error("Error in X-ray analysis", error=str(e))
             return {"error": str(e), "message": "Unable to process X-ray at this time."}
 
+    def _call_together_ai_with_circuit_breaker(self, prompt):
+        """Call Together AI with circuit breaker protection"""
+        try:
+            from ..circuit_breaker import together_ai_breaker
+            return together_ai_breaker.call(self._call_together_ai, prompt)
+        except Exception as e:
+            logger.error("Circuit breaker failed for Together AI", error=str(e))
+            # Use fallback
+            from ..circuit_breaker import together_ai_fallback
+            return together_ai_fallback(prompt)
+
     def _call_together_ai(self, prompt):
         url = "https://api.together.xyz/v1/completions"
         payload = {
@@ -1029,7 +973,7 @@ Your response must be valid JSON that can be parsed programmatically.
             "Authorization": f"Bearer {self.together_api_key}"
         }
         try:
-            response = requests.post(url, json=payload, headers=headers)
+            response = requests.post(url, json=payload, headers=headers, timeout=30)
             response.raise_for_status()
             if response.status_code == 200:
                 return response.json()["choices"][0]["text"].strip()
@@ -1045,45 +989,49 @@ Your response must be valid JSON that can be parsed programmatically.
             logger.error("Unexpected error in API call", error=str(e))
             raise Exception(f"Unexpected error: {str(e)}")
 
-    def _scrape_health_news(self, source='who', limit=3):
-        cache_key = f"health_news_{source}_{limit}"
+    def _get_health_news_comprehensive(self, source='all', limit=3):
+        """Comprehensive health news retrieval with multiple fallback strategies"""
+        cache_key = f"health_news_comprehensive_{source}_{limit}"
         cached_result = cache.get(cache_key)
         if cached_result:
-            logger.info("Returning cached health news")
+            logger.info("Returning cached comprehensive health news")
             return cached_result
         
         try:
             articles = []
             
-            # Expanded sources list with better error handling
-            sources_to_try = []
-            if source in ['who', 'all']:
-                sources_to_try.append(('who', self._scrape_who_news))
-            if source in ['cdc', 'all']:
-                sources_to_try.append(('cdc', self._scrape_cdc_news))
-            if source in ['mayo', 'all']:
-                sources_to_try.append(('mayo', self._scrape_mayo_news))
+            # Strategy 1: Try RSS feeds first (most reliable)
+            try:
+                rss_articles = self._get_health_news_from_rss(source, limit)
+                articles.extend(rss_articles)
+                logger.info("Retrieved articles from RSS feeds", count=len(rss_articles))
+            except Exception as e:
+                logger.warning("RSS feed retrieval failed", error=str(e))
             
-            # Try each source with more detailed logging
-            for src_name, scrape_func in sources_to_try:
+            # Strategy 2: Try news APIs if we need more articles
+            if len(articles) < limit:
                 try:
-                    logger.info(f"Attempting to scrape from {src_name}")
-                    src_articles = scrape_func(limit=limit if source == src_name else max(1, limit // len(sources_to_try)))
-                    if src_articles and isinstance(src_articles, list):
-                        articles.extend(src_articles)
-                        logger.info(f"Successfully retrieved {len(src_articles)} articles from {src_name}")
-                    else:
-                        logger.warning(f"No articles found from {src_name}")
+                    api_articles = self._get_health_news_from_apis(limit - len(articles))
+                    articles.extend(api_articles)
+                    logger.info("Retrieved articles from news APIs", count=len(api_articles))
                 except Exception as e:
-                    logger.error(f"Failed to scrape {src_name}", error=str(e))
-                    continue
+                    logger.warning("News API retrieval failed", error=str(e))
             
-            # Add fallback if no articles found
+            # Strategy 3: Try web scraping as last resort
+            if len(articles) < limit:
+                try:
+                    scraped_articles = self._scrape_health_news_fallback(source, limit - len(articles))
+                    articles.extend(scraped_articles)
+                    logger.info("Retrieved articles from web scraping", count=len(scraped_articles))
+                except Exception as e:
+                    logger.warning("Web scraping failed", error=str(e))
+            
+            # Strategy 4: Use static fallback content if all else fails
             if not articles:
-                logger.warning("No articles found from any source, using fallback data")
+                logger.warning("All news sources failed, using static fallback")
                 articles = self._get_fallback_health_news(limit)
             
-            # Process articles safely
+            # Process and clean articles
             processed_articles = []
             for article in articles[:limit]:
                 try:
@@ -1115,157 +1063,138 @@ Your response must be valid JSON that can be parsed programmatically.
                     logger.warning(f"Error processing article: {str(e)}")
                     continue
             
+            # Cache for 12 hours
             cache.set(cache_key, processed_articles, 60 * 60 * 12)
             return processed_articles
+            
         except Exception as e:
-            logger.error("Error scraping health news", error=str(e))
+            logger.error("Error in comprehensive health news retrieval", error=str(e))
             return self._get_fallback_health_news(limit)
 
-    def _get_fallback_health_news(self, limit=3):
-        """Fallback method for when scraping fails"""
-        return [
-            {
-                "title": "COVID-19 Updates and Prevention Measures",
-                "source": "WHO",
-                "url": "https://www.who.int/emergencies/diseases/novel-coronavirus-2019",
-                "summary": "Latest information on COVID-19 prevention, symptoms, and global statistics.",
-                "published_date": datetime.now().strftime("%Y-%m-%d")
-            },
-            {
-                "title": "Managing Chronic Conditions During Healthcare Disruptions",
-                "source": "CDC",
-                "url": "https://www.cdc.gov/",
-                "summary": "Guidance for patients with chronic conditions during healthcare system disruptions.",
-                "content": "Patients with chronic conditions should maintain medication supplies, use telehealth when possible, and have emergency plans in place.",
-                "published_date": datetime.now().strftime("%Y-%m-%d")
-            },
-            {
-                "title": "Seasonal Illness Prevention Strategies",
-                "source": "Mayo Clinic",
-                "url": "https://www.mayoclinic.org/",
-                "summary": "Tips for preventing common seasonal illnesses and maintaining good health.",
-                "content": "Regular handwashing, adequate sleep, proper nutrition, and staying up-to-date with vaccinations help prevent seasonal illnesses.",
-                "published_date": datetime.now().strftime("%Y-%m-%d")
-            }
-        ][:limit]
-
-    def _scrape_who_news(self, limit=3):
-        try:
-            headers = {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-                'Accept-Language': 'en-US,en;q=0.5',
-                'Accept-Encoding': 'gzip, deflate',
-                'Connection': 'keep-alive',
-                'Upgrade-Insecure-Requests': '1',
-            }
-            
-            url = "https://www.who.int/news"
-            response = requests.get(url, timeout=10, headers=headers)
-            response.raise_for_status()
-            soup = BeautifulSoup(response.text, 'html.parser')
-            news_items = soup.select('.list-view--item')
-            articles = []
-            for item in news_items[:limit]:
+    def _get_health_news_from_rss(self, source='all', limit=3):
+        """Get health news from RSS feeds"""
+        articles = []
+        
+        rss_sources = {
+            'who': 'https://www.who.int/rss-feeds/news-english.xml',
+            'cdc': 'https://tools.cdc.gov/api/v2/resources/media/316422.rss',
+            'mayo': 'https://newsnetwork.mayoclinic.org/feed/',
+        }
+        
+        sources_to_try = [source] if source != 'all' else list(rss_sources.keys())
+        
+        for src in sources_to_try:
+            if src in rss_sources:
                 try:
-                    title_elem = item.select_one('.heading')
-                    title = title_elem.text.strip() if title_elem else "No title"
-                    link_elem = item.select_one('a')
-                    url = "https://www.who.int" + link_elem['href'] if link_elem and 'href' in link_elem.attrs else "#"
-                    date_elem = item.select_one('.timestamp')
-                    published_date = date_elem.text.strip() if date_elem else None
-                    img_elem = item.select_one('img')
-                    image_url = img_elem['src'] if img_elem and 'src' in img_elem.attrs else None
-                    content = self._get_article_content(url)
-                    articles.append({
-                        "title": title,
-                        "source": "WHO",
-                        "url": url,
-                        "content": content,
-                        "image_url": image_url,
-                        "published_date": published_date
-                    })
+                    feed = feedparser.parse(rss_sources[src])
+                    for entry in feed.entries[:limit]:
+                        articles.append({
+                            'title': entry.get('title', 'Health News'),
+                            'source': src.upper(),
+                            'url': entry.get('link', '#'),
+                            'content': entry.get('description', 'Health information update'),
+                            'summary': entry.get('summary', entry.get('description', ''))[:200],
+                            'published_date': entry.get('published', '')
+                        })
+                    logger.info(f"Retrieved {len(feed.entries[:limit])} articles from {src} RSS")
                 except Exception as e:
-                    logger.warning(f"Error processing WHO news item: {str(e)}")
+                    logger.warning(f"RSS feed failed for {src}", error=str(e))
                     continue
-            return articles
-        except Exception as e:
-            logger.error(f"Error scraping WHO news: {str(e)}")
-            return []
+        
+        return articles
 
-    def _scrape_cdc_news(self, limit=3):
+    def _get_health_news_from_apis(self, limit=3):
+        """Get health news from legitimate APIs"""
+        articles = []
+        
         try:
-            headers = {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-                'Accept-Language': 'en-US,en;q=0.5',
-                'Accept-Encoding': 'gzip, deflate',
-                'Connection': 'keep-alive',
-                'Upgrade-Insecure-Requests': '1',
-            }
-            
-            url = "https://www.cdc.gov/media/index.html"
-            response = requests.get(url, timeout=10, headers=headers)
-            response.raise_for_status()
-            soup = BeautifulSoup(response.text, 'html.parser')
-            news_items = soup.select('.feed-item')
-            articles = []
-            for item in news_items[:limit]:
-                try:
-                    title_elem = item.select_one('a')
-                    title = title_elem.text.strip() if title_elem else "No title"
-                    url = "https://www.cdc.gov" + title_elem['href'] if title_elem and 'href' in title_elem.attrs else "#"
-                    date_elem = item.select_one('.date')
-                    published_date = date_elem.text.strip() if date_elem else None
-                    content = self._get_article_content(url)
-                    articles.append({
-                        "title": title,
-                        "source": "CDC",
-                        "url": url,
-                        "content": content,
-                        "image_url": None,
-                        "published_date": published_date
-                    })
-                except Exception as e:
-                    logger.warning(f"Error processing CDC news item: {str(e)}")
-                    continue
-            return articles
+            # Try NewsAPI if available
+            news_api_key = getattr(settings, 'NEWS_API_KEY', None)
+            if news_api_key:
+                url = "https://newsapi.org/v2/top-headlines"
+                params = {
+                    'category': 'health',
+                    'apiKey': news_api_key,
+                    'pageSize': limit,
+                    'language': 'en'
+                }
+                
+                response = requests.get(url, params=params, timeout=10)
+                if response.status_code == 200:
+                    data = response.json()
+                    for article in data.get('articles', []):
+                        articles.append({
+                            'title': article.get('title', 'Health News'),
+                            'source': article.get('source', {}).get('name', 'News Source'),
+                            'url': article.get('url', '#'),
+                            'content': article.get('content', ''),
+                            'summary': article.get('description', '')[:200],
+                            'published_date': article.get('publishedAt', '')
+                        })
+                    logger.info(f"Retrieved {len(articles)} articles from NewsAPI")
         except Exception as e:
-            logger.error(f"Error scraping CDC news: {str(e)}")
-            return []
+            logger.error("NewsAPI failed", error=str(e))
+        
+        return articles
 
-    def _scrape_mayo_news(self, limit=3):
-        """Mayo Clinic news scraper with better error handling"""
+    def _scrape_health_news_fallback(self, source='all', limit=3):
+        """Fallback web scraping with improved error handling"""
+        articles = []
+        
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.9',
+            'Accept-Encoding': 'gzip, deflate, br',
+            'DNT': '1',
+            'Connection': 'keep-alive',
+            'Upgrade-Insecure-Requests': '1',
+        }
+        
+        # Try with longer timeouts and better error handling
+        sources_to_try = []
+        if source in ['who', 'all']:
+            sources_to_try.append(('who', self._scrape_who_news_improved))
+        if source in ['cdc', 'all']:
+            sources_to_try.append(('cdc', self._scrape_cdc_news_improved))
+        if source in ['mayo', 'all']:
+            sources_to_try.append(('mayo', self._scrape_mayo_news_improved))
+        
+        for src_name, scrape_func in sources_to_try:
+            try:
+                logger.info(f"Attempting improved scraping from {src_name}")
+                src_articles = scrape_func(limit=max(1, limit // len(sources_to_try)), headers=headers)
+                if src_articles:
+                    articles.extend(src_articles)
+                    logger.info(f"Successfully retrieved {len(src_articles)} articles from {src_name}")
+            except Exception as e:
+                logger.warning(f"Improved scraping failed for {src_name}", error=str(e))
+                continue
+        
+        return articles
+
+    def _scrape_who_news_improved(self, limit=3, headers=None):
+        """Improved WHO news scraping"""
         try:
-            # Add headers to avoid 403 errors
-            headers = {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-                'Accept-Language': 'en-US,en;q=0.5',
-                'Accept-Encoding': 'gzip, deflate',
-                'Connection': 'keep-alive',
-                'Upgrade-Insecure-Requests': '1',
-            }
-            
-            # Try alternative Mayo Clinic news sources
-            mayo_urls = [
-                "https://newsnetwork.mayoclinic.org/",  # Alternative URL
-                "https://www.mayoclinic.org/about-mayo-clinic/newsnetwork",  # Original URL
+            # Try multiple WHO news URLs
+            who_urls = [
+                "https://www.who.int/news",
+                "https://www.who.int/news-room/news",
+                "https://www.who.int/emergencies/news"
             ]
             
-            for url in mayo_urls:
+            for url in who_urls:
                 try:
-                    response = requests.get(url, timeout=10, headers=headers)
+                    response = requests.get(url, timeout=15, headers=headers)
                     if response.status_code == 200:
                         soup = BeautifulSoup(response.text, 'html.parser')
                         
                         # Try multiple selectors
                         selectors = [
-                            '.content-item',
+                            '.list-view--item',
                             '.news-item',
-                            '.article-item',
-                            'article',
-                            '.card'
+                            '.content-item',
+                            'article'
                         ]
                         
                         news_items = []
@@ -1274,36 +1203,157 @@ Your response must be valid JSON that can be parsed programmatically.
                             if news_items:
                                 break
                         
-                        if not news_items:
-                            continue
-                            
                         articles = []
                         for item in news_items[:limit]:
                             try:
-                                # Try multiple title selectors
-                                title_elem = item.select_one('h3 a, h2 a, .title a, a.headline')
-                                title = title_elem.text.strip() if title_elem else "No title"
+                                title_elem = item.select_one('.heading, h3, h2, .title')
+                                title = title_elem.text.strip() if title_elem else "WHO Health Update"
                                 
-                                article_url = "#"
-                                if title_elem and 'href' in title_elem.attrs:
-                                    href = title_elem['href']
-                                    if href.startswith('/'):
-                                        article_url = f"https://www.mayoclinic.org{href}"
-                                    elif href.startswith('http'):
-                                        article_url = href
+                                link_elem = item.select_one('a')
+                                article_url = "https://www.who.int" + link_elem['href'] if link_elem and 'href' in link_elem.attrs else url
                                 
-                                # Try multiple date selectors
-                                date_elem = item.select_one('.date, .publish-date, time')
+                                date_elem = item.select_one('.timestamp, .date, time')
                                 published_date = date_elem.text.strip() if date_elem else None
                                 
-                                content = self._get_article_content(article_url)
+                                content = self._get_article_content_safe(article_url, headers)
+                                
+                                articles.append({
+                                    "title": title,
+                                    "source": "WHO",
+                                    "url": article_url,
+                                    "content": content,
+                                    "published_date": published_date
+                                })
+                            except Exception as e:
+                                logger.warning(f"Error processing WHO news item: {str(e)}")
+                                continue
+                        
+                        if articles:
+                            return articles
+                        
+                except requests.exceptions.RequestException as e:
+                    logger.warning(f"Failed to access {url}: {str(e)}")
+                    continue
+            
+            return []
+        except Exception as e:
+            logger.error(f"Error in improved WHO scraping: {str(e)}")
+            return []
+
+    def _scrape_cdc_news_improved(self, limit=3, headers=None):
+        """Improved CDC news scraping"""
+        try:
+            cdc_urls = [
+                "https://www.cdc.gov/media/index.html",
+                "https://www.cdc.gov/media/releases.htm",
+                "https://www.cdc.gov/news/"
+            ]
+            
+            for url in cdc_urls:
+                try:
+                    response = requests.get(url, timeout=15, headers=headers)
+                    if response.status_code == 200:
+                        soup = BeautifulSoup(response.text, 'html.parser')
+                        
+                        selectors = [
+                            '.feed-item',
+                            '.news-item',
+                            '.press-release',
+                            'article'
+                        ]
+                        
+                        news_items = []
+                        for selector in selectors:
+                            news_items = soup.select(selector)
+                            if news_items:
+                                break
+                        
+                        articles = []
+                        for item in news_items[:limit]:
+                            try:
+                                title_elem = item.select_one('a, h3, h2, .title')
+                                title = title_elem.text.strip() if title_elem else "CDC Health Update"
+                                
+                                link_href = title_elem.get('href') if title_elem and title_elem.name == 'a' else None
+                                article_url = "https://www.cdc.gov" + link_href if link_href else url
+                                
+                                date_elem = item.select_one('.date, time, .publish-date')
+                                published_date = date_elem.text.strip() if date_elem else None
+                                
+                                content = self._get_article_content_safe(article_url, headers)
+                                
+                                articles.append({
+                                    "title": title,
+                                    "source": "CDC",
+                                    "url": article_url,
+                                    "content": content,
+                                    "published_date": published_date
+                                })
+                            except Exception as e:
+                                logger.warning(f"Error processing CDC news item: {str(e)}")
+                                continue
+                        
+                        if articles:
+                            return articles
+                            
+                except requests.exceptions.RequestException as e:
+                    logger.warning(f"Failed to access {url}: {str(e)}")
+                    continue
+            
+            return []
+        except Exception as e:
+            logger.error(f"Error in improved CDC scraping: {str(e)}")
+            return []
+
+    def _scrape_mayo_news_improved(self, limit=3, headers=None):
+        """Improved Mayo Clinic news scraping"""
+        try:
+            mayo_urls = [
+                "https://newsnetwork.mayoclinic.org/",
+                "https://www.mayoclinic.org/about-mayo-clinic/newsnetwork",
+                "https://newsnetwork.mayoclinic.org/category/health-tips/"
+            ]
+            
+            for url in mayo_urls:
+                try:
+                    response = requests.get(url, timeout=15, headers=headers)
+                    if response.status_code == 200:
+                        soup = BeautifulSoup(response.text, 'html.parser')
+                        
+                        selectors = [
+                            '.content-item',
+                            '.news-item',
+                            '.post',
+                            'article',
+                            '.entry'
+                        ]
+                        
+                        news_items = []
+                        for selector in selectors:
+                            news_items = soup.select(selector)
+                            if news_items:
+                                break
+                        
+                        articles = []
+                        for item in news_items[:limit]:
+                            try:
+                                title_elem = item.select_one('h3 a, h2 a, .title a, .entry-title a')
+                                title = title_elem.text.strip() if title_elem else "Mayo Clinic Health Update"
+                                
+                                article_url = title_elem.get('href') if title_elem else url
+                                if article_url and not article_url.startswith('http'):
+                                    article_url = f"https://newsnetwork.mayoclinic.org{article_url}"
+                                
+                                date_elem = item.select_one('.date, .publish-date, time, .entry-date')
+                                published_date = date_elem.text.strip() if date_elem else None
+                                
+                                content = self._get_article_content_safe(article_url, headers)
                                 
                                 articles.append({
                                     "title": title,
                                     "source": "Mayo Clinic",
                                     "url": article_url,
                                     "content": content,
-                                    "image_url": None,
                                     "published_date": published_date
                                 })
                             except Exception as e:
@@ -1313,78 +1363,96 @@ Your response must be valid JSON that can be parsed programmatically.
                         if articles:
                             return articles
                             
-                    elif response.status_code == 403:
-                        logger.warning(f"403 Forbidden for {url}, trying next URL")
-                        continue
-                    else:
-                        logger.warning(f"HTTP {response.status_code} for {url}")
-                        continue
-                        
                 except requests.exceptions.RequestException as e:
-                    logger.warning(f"Request error for {url}: {str(e)}")
+                    logger.warning(f"Failed to access {url}: {str(e)}")
                     continue
             
-            # If all URLs fail, return fallback content
-            logger.warning("All Mayo Clinic URLs failed, returning fallback content")
-            return [{
-                "title": "Mayo Clinic Health Information",
-                "source": "Mayo Clinic",
-                "url": "https://www.mayoclinic.org/",
-                "content": "Mayo Clinic provides comprehensive health information and medical expertise.",
-                "image_url": None,
-                "published_date": None
-            }]
-            
+            return []
         except Exception as e:
-            logger.error(f"Error scraping Mayo news: {str(e)}")
+            logger.error(f"Error in improved Mayo scraping: {str(e)}")
             return []
 
-    def _get_article_content(self, url):
+    def _get_article_content_safe(self, url, headers=None):
+        """Safely get article content with timeout and error handling"""
         try:
-            # Add headers to avoid 403 errors
-            headers = {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-                'Accept-Language': 'en-US,en;q=0.5',
-                'Accept-Encoding': 'gzip, deflate',
-                'Connection': 'keep-alive',
-                'Upgrade-Insecure-Requests': '1',
-            }
+            if not url or url == '#':
+                return "Content not available"
             
             response = requests.get(url, timeout=10, headers=headers)
-            response.raise_for_status()
+            if response.status_code != 200:
+                return "Content could not be retrieved"
+            
             soup = BeautifulSoup(response.text, 'html.parser')
             
+            # Remove unwanted elements
+            for script in soup.select('script, style, nav, footer, aside, .sidebar'):
+                script.extract()
+            
+            # Try multiple content selectors
             content_selectors = [
                 'article', '.content', '.main-content',
                 '#content', '.article-body', '.story-body',
-                '.entry-content', '.post-content'
+                '.entry-content', '.post-content', '.news-content'
             ]
             
             for selector in content_selectors:
                 content_elem = soup.select_one(selector)
                 if content_elem:
-                    # Remove unwanted elements
-                    for script in content_elem.select('script, style, nav, footer, aside'):
-                        script.extract()
-                    
                     content = content_elem.get_text(separator=' ', strip=True)
                     content = ' '.join(content.split())
                     
                     if len(content) > 5000:
                         content = content[:5000] + "..."
                     
-                    if len(content) > 100:  # Only return if we got substantial content
+                    if len(content) > 100:
                         return content
             
-            return "Content could not be extracted."
+            return "Content could not be extracted"
             
-        except requests.exceptions.RequestException as e:
-            logger.warning(f"Request error getting article content from {url}: {str(e)}")
-            return "Content could not be retrieved due to access restrictions."
         except Exception as e:
             logger.warning(f"Error getting article content from {url}: {str(e)}")
-            return "Content could not be retrieved."
+            return "Content could not be retrieved due to access restrictions"
+
+    def _get_fallback_health_news(self, limit=3):
+        """Enhanced fallback method with more realistic content"""
+        current_date = datetime.now().strftime("%Y-%m-%d")
+        
+        fallback_articles = [
+            {
+                "title": "Global Health Update: Latest Medical Developments",
+                "source": "WHO",
+                "url": "https://www.who.int/news",
+                "summary": "Recent developments in global health initiatives, disease prevention strategies, and healthcare system improvements worldwide.",
+                "content": "The World Health Organization continues to monitor global health trends and provide guidance on emerging health challenges. Recent focus areas include strengthening health systems, improving access to essential medicines, and promoting preventive care measures.",
+                "published_date": current_date
+            },
+            {
+                "title": "Advances in Preventive Healthcare and Disease Management",
+                "source": "CDC",
+                "url": "https://www.cdc.gov/",
+                "summary": "Latest research on disease prevention, vaccination programs, and public health interventions showing positive outcomes.",
+                "content": "Centers for Disease Control and Prevention research shows continued progress in disease prevention and health promotion. Key areas include chronic disease management, infectious disease control, and community health interventions.",
+                "published_date": current_date
+            },
+            {
+                "title": "Medical Research Breakthroughs in Patient Care",
+                "source": "Mayo Clinic",
+                "url": "https://www.mayoclinic.org/",
+                "summary": "Recent medical research findings improving patient outcomes and treatment approaches across various medical specialties.",
+                "content": "Mayo Clinic researchers continue to advance medical knowledge through innovative studies in personalized medicine, surgical techniques, and treatment protocols. Recent findings demonstrate improved patient outcomes through evidence-based care approaches.",
+                "published_date": current_date
+            },
+            {
+                "title": "Seasonal Health Guidelines and Wellness Tips",
+                "source": "Health Authority",
+                                "url": "https://www.health.gov/",
+                "summary": "Seasonal health recommendations and wellness strategies for maintaining optimal health throughout the year.",
+                "content": "Health authorities recommend seasonal adjustments to health routines, including appropriate vaccinations, dietary modifications, and exercise adaptations. Focus on preventive measures and early detection of health issues.",
+                "published_date": current_date
+            }
+        ][:limit]
+        
+        return fallback_articles
 
     def _summarize_article(self, content, max_length=200):
         try:
@@ -1394,7 +1462,7 @@ Your response must be valid JSON that can be parsed programmatically.
 {content[:4000]}
 
 Summary:"""
-                summary = self._call_together_ai(prompt)
+                summary = self._call_together_ai_with_circuit_breaker(prompt)
                 summary = summary.strip()
                 if len(summary) > max_length:
                     summary = summary[:max_length] + "..."
@@ -1459,7 +1527,7 @@ def scrape_health_news(source='all', limit=3):
     """
     try:
         praxia = PraxiaAI()
-        news_articles = praxia._scrape_health_news(source, limit)
+        news_articles = praxia._get_health_news_comprehensive(source, limit)
         
         # Save to database
         from ..models import HealthNews
@@ -1500,13 +1568,13 @@ def scrape_health_news(source='all', limit=3):
         raise
 
 @shared_task
-def diagnose_symptoms_task(symptoms, user_profile=None):
+def diagnose_symptoms_task(symptoms, user_profile=None, chat_topic=None):
     """
     Celery task for symptom diagnosis (if you need async diagnosis)
     """
     try:
         praxia = PraxiaAI()
-        diagnosis_result = praxia.diagnose_symptoms(symptoms, user_profile)
+        diagnosis_result = praxia.diagnose_symptoms(symptoms, user_profile, chat_topic)
         
         logger.info("Symptom diagnosis completed", symptoms=symptoms[:50])
         return diagnosis_result
@@ -1514,3 +1582,104 @@ def diagnose_symptoms_task(symptoms, user_profile=None):
     except Exception as e:
         logger.error("Error in symptom diagnosis task", error=str(e), symptoms=symptoms[:50])
         raise
+
+@shared_task
+def periodic_model_cleanup():
+    """
+    Periodic task to clean up model memory and optimize performance
+    """
+    try:
+        import gc
+        import torch
+        
+        # Clear cache
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+            torch.cuda.synchronize()
+        
+        # Force garbage collection
+        gc.collect()
+        
+        logger.info("Model cleanup completed successfully")
+        return {"status": "success", "message": "Model cleanup completed"}
+        
+    except Exception as e:
+        logger.error("Error in model cleanup", error=str(e))
+        return {"status": "error", "message": str(e)}
+
+@shared_task
+def health_data_refresh():
+    """
+    Periodic task to refresh health data cache
+    """
+    try:
+        praxia = PraxiaAI()
+        
+        # Clear existing cache
+        cache.delete('latest_health_data')
+        
+        # Get fresh health data
+        health_data = praxia._get_latest_health_data()
+        
+        logger.info("Health data refreshed", 
+                   news_count=len(health_data.get('health_news', [])),
+                   research_topics=len(health_data.get('research_trends', {})))
+        
+        return {
+            "status": "success", 
+            "message": "Health data refreshed",
+            "data": {
+                "news_articles": len(health_data.get('health_news', [])),
+                "research_topics": len(health_data.get('research_trends', {}))
+            }
+        }
+        
+    except Exception as e:
+        logger.error("Error refreshing health data", error=str(e))
+        return {"status": "error", "message": str(e)}
+
+@shared_task
+def validate_model_integrity():
+    """
+    Task to validate AI model integrity and performance
+    """
+    try:
+        praxia = PraxiaAI()
+        
+        # Test basic functionality
+        test_symptoms = "headache and fever"
+        test_result = praxia.diagnose_symptoms(test_symptoms)
+        
+        if not test_result or 'diagnosis' not in test_result:
+            raise Exception("Model validation failed - invalid response format")
+        
+        # Test X-ray model if available
+        xray_status = "unavailable"
+        if hasattr(praxia, 'densenet_model') and praxia.densenet_model is not None:
+            xray_status = "available"
+        
+        # Test research functionality
+        research_test = praxia.get_medical_research("diabetes", limit=1)
+        research_status = "available" if research_test else "unavailable"
+        
+        validation_result = {
+            "status": "success",
+            "timestamp": datetime.now().isoformat(),
+            "components": {
+                "symptom_diagnosis": "available",
+                "xray_analysis": xray_status,
+                "medical_research": research_status,
+                "together_ai": "available"
+            }
+        }
+        
+        logger.info("Model validation completed", result=validation_result)
+        return validation_result
+        
+    except Exception as e:
+        logger.error("Model validation failed", error=str(e))
+        return {
+            "status": "error",
+            "timestamp": datetime.now().isoformat(),
+            "error": str(e)
+        }

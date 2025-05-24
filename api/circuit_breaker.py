@@ -24,9 +24,10 @@ mayo_breaker = pybreaker.CircuitBreaker(
 )
 
 together_ai_breaker = pybreaker.CircuitBreaker(
-    fail_max=3,
+    fail_max=2,  
     reset_timeout=30,
-    exclude=[ValueError, TypeError],
+    recovery_timeout=10,  
+    expected_exception=Exception,
     name='together_ai'
 )
 

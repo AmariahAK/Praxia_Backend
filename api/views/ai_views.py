@@ -73,7 +73,7 @@ class ChatMessageView(APIView):
         session = get_object_or_404(ChatSession, id=session_id, user=request.user)
         
         try:
-            # Handle both multipart form data and JSON content
+            # IMPROVED: Better input validation and error handling
             if request.content_type and 'multipart/form-data' in request.content_type:
                 xray_image = request.FILES.get('xray_image')
                 message_content = request.data.get('content', '').strip()
@@ -81,199 +81,206 @@ class ChatMessageView(APIView):
                 xray_image = None
                 message_content = request.data.get('content', '').strip()
         
-            # Ensure we have valid content
+            # ENHANCED: Validate message content more thoroughly
+            if not message_content and not xray_image:
+                return Response({
+                    'error': 'Either message content or X-ray image is required'
+                }, status=status.HTTP_400_BAD_REQUEST)
+        
             if not message_content:
-                if xray_image:
-                    message_content = "Please analyze this X-ray image."
-                else:
-                    message_content = "Hello, I need help with my health."
-            
-            # Clean up the message content to prevent parsing errors
-            message_content = message_content.strip()
+                message_content = "Please analyze this X-ray image." if xray_image else "Hello, I need help with my health."
         
-            # Validate message content length and format
-            if len(message_content) < 2:
-                message_content = "Hello, I need help with my health."
-            
-            user_message_serializer = ChatMessageSerializer(data={
-                'role': 'user',
-                'content': message_content
-            })
+            # IMPROVED: Length validation
+            if len(message_content) > 2000:
+                message_content = message_content[:2000] + "..."
         
-            if not user_message_serializer.is_valid():
-                logger.error("Invalid user message", errors=user_message_serializer.errors)
-                return Response(user_message_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            # Create user message with better error handling
+            try:
+                user_message_serializer = ChatMessageSerializer(data={
+                    'role': 'user',
+                    'content': message_content
+                })
         
-            user_message = user_message_serializer.save(session=session)
+                if not user_message_serializer.is_valid():
+                    logger.error("Invalid user message", errors=user_message_serializer.errors)
+                    return Response(user_message_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         
-            # Get user profile safely
+                user_message = user_message_serializer.save(session=session)
+            except Exception as e:
+                logger.error("Failed to create user message", error=str(e))
+                return Response({
+                    'error': 'Failed to process message'
+                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
+            # ENHANCED: Get user profile with better error handling
             user_profile = {}
             try:
                 if hasattr(request.user, 'profile'):
-                    user_profile = {
-                        'gender': getattr(request.user.profile, 'gender', None),
-                        'age': getattr(request.user.profile, 'age', None),
-                        'weight': getattr(request.user.profile, 'weight', None),
-                        'height': getattr(request.user.profile, 'height', None),
-                        'country': getattr(request.user.profile, 'country', None),
-                        'allergies': getattr(request.user.profile, 'allergies', None)
-                    }
-                    # Filter out None values from user profile
-                    user_profile = {k: v for k, v in user_profile.items() if v is not None}
+                    profile = request.user.profile
+                    user_profile = {k: v for k, v in {
+                        'gender': getattr(profile, 'gender', None),
+                        'age': getattr(profile, 'age', None),
+                        'weight': getattr(profile, 'weight', None),
+                        'height': getattr(profile, 'height', None),
+                        'country': getattr(profile, 'country', None),
+                        'allergies': getattr(profile, 'allergies', None)
+                    }.items() if v is not None}
             except Exception as e:
                 logger.warning("Error getting user profile", error=str(e))
                 user_profile = {}
         
+            # IMPROVED: Process with circuit breaker and timeout
             ai_response = None
         
-            # If there's an X-ray image, process it
-            if xray_image:
-                # Create an XRayAnalysis object to track the analysis
-                xray = XRayAnalysis.objects.create(
-                    user=request.user,
-                    image=xray_image,
-                    analysis_result="Processing...",
-                    detected_conditions={},
-                    confidence_scores={}
-                )
+            try:
+                if xray_image:
+                    # X-ray processing with size limits
+                    if xray_image.size > 10 * 1024 * 1024:  # 10MB limit
+                        return Response({
+                            'error': 'X-ray image too large. Maximum size is 10MB.'
+                        }, status=status.HTTP_400_BAD_REQUEST)
+                
+                    xray = XRayAnalysis.objects.create(
+                        user=request.user,
+                        image=xray_image,
+                        analysis_result="Processing...",
+                        detected_conditions={},
+                        confidence_scores={}
+                    )
             
-                # Start asynchronous analysis
-                analyze_xray_task.delay(xray.id, xray.image.path)
+                    # Use Celery with timeout
+                    analyze_xray_task.apply_async(
+                        args=[xray.id, xray.image.path],
+                        countdown=2,  # Start after 2 seconds
+                        expires=300   # Expire after 5 minutes
+                    )
             
-                # Create an initial AI response indicating the analysis is in progress
-                ai_response = {
-                    "message": "I'm analyzing your X-ray image. This may take a minute or two.",
-                    "xray_analysis_id": xray.id,
-                    "status": "processing"
-                }
-            
-                logger.info("X-ray analysis queued from chat", user=request.user.username, xray_id=xray.id)
-            else:
-                # Regular text message processing
-                praxia = PraxiaAI()
-                try:
-                    # Get the current session title to use as chat topic
+                    ai_response = {
+                        "message": "I'm analyzing your X-ray image. This may take a minute or two.",
+                        "xray_analysis_id": xray.id,
+                        "status": "processing"
+                    }
+                    logger.info("X-ray analysis queued", user=request.user.username, xray_id=xray.id)
+                else:
+                    # ENHANCED: Regular text processing with timeout and fallback
+                    from django.core.exceptions import ValidationError
+                    
+                    praxia = PraxiaAI()
                     chat_topic = session.title if session.title != "New Chat" else None
                     
-                    if "analyze my diet" in message_content.lower() or "diet analysis" in message_content.lower():
-                        ai_response = praxia.analyze_diet(message_content, user_profile)
-                    elif "medication" in message_content.lower() or "drug interaction" in message_content.lower():
-                        ai_response = praxia.analyze_medication(message_content, user_profile)
-                    else:
-                        # Pass the chat topic to the diagnosis function
-                        ai_response = praxia.diagnose_symptoms(message_content, user_profile, chat_topic)
+                    # Add timeout wrapper
+                    import signal
                     
-                    # Ensure we have a valid response
-                    if not ai_response or not isinstance(ai_response, dict):
-                        raise ValueError("Invalid response from AI")
+                    def timeout_handler(signum, frame):
+                        raise TimeoutError("AI processing timeout")
                     
-                except Exception as e:
-                    logger.error("Error processing message", error=str(e), symptoms=message_content[:50])
-                    # Create a more helpful structured response
-                    ai_response = {
-                        "diagnosis": {
-                            "conditions": ["I need more information to help you better"],
-                            "next_steps": [
-                                "Could you describe your symptoms in more detail?",
-                                "How long have you been experiencing these symptoms?",
-                                "Are there any specific triggers you've noticed?"
-                            ],
-                            "urgent": [],
-                            "advice": "I'd be happy to help you with your health concerns. Could you provide more specific details about what you're experiencing?",
-                            "clarification": [
-                                "What specific symptoms are you experiencing?",
-                                "When did these symptoms start?",
-                                "Have you tried any treatments so far?"
-                            ]
-                        },
-                        "disclaimer": "This information is for educational purposes only and not a substitute for professional medical advice."
-                    }
-        
-            if ai_response and isinstance(ai_response, dict):
-                # Ensure the response is properly formatted for frontend consumption
-                formatted_response = ai_response.copy()
-                
-                # If it's a diagnosis response, ensure conditions are properly formatted
-                if 'diagnosis' in formatted_response and formatted_response['diagnosis'].get('conditions'):
-                    conditions = formatted_response['diagnosis']['conditions']
-                    if isinstance(conditions, list):
-                        # Make sure each condition is a string, not an object
-                        formatted_response['diagnosis']['conditions'] = [
-                            str(condition) if not isinstance(condition, str) else condition 
-                            for condition in conditions
-                        ]
-                
-                ai_message = ChatMessage.objects.create(
-                    session=session,
-                    role='assistant',
-                    content=json.dumps(formatted_response, ensure_ascii=False)  
-                )
-            
-                # Update session title if it's a new session with generic title
-                if session.title == "New Chat" and len(session.messages.all()) <= 2:
+                    signal.signal(signal.SIGALRM, timeout_handler)
+                    signal.alarm(45)  # 45 second timeout
+                    
                     try:
-                        # Use the extracted medical topic for the session title
-                        if ai_response and isinstance(ai_response, dict) and ai_response.get('medical_topic'):
-                            topic = ai_response['medical_topic']
-                            # Clean and format the topic for title
-                            clean_title = ' '.join(topic.split()[:4])  
-                            clean_title = clean_title.title()  
-                            if clean_title and len(clean_title) > 3:
-                                session.title = clean_title[:50]  
-                                session.save()
-                                logger.info("Generated chat topic from medical topic", topic=clean_title)
+                        if "analyze my diet" in message_content.lower():
+                            ai_response = praxia.analyze_diet(message_content, user_profile)
+                        elif "medication" in message_content.lower():
+                            ai_response = praxia.analyze_medication(message_content, user_profile)
                         else:
-                            # Fallback to original method
-                            praxia = PraxiaAI()
-                            topic_prompt = f"Generate a short 3-4 word medical title for: {message_content[:50]}. Respond with only the title, no quotes."
-                            topic = praxia._call_together_ai(topic_prompt).strip()
-                            topic = topic.replace('"', '').replace("'", "").strip()
-                            if topic and len(topic) > 0 and len(topic) < 100:
-                                session.title = topic[:50]
-                                session.save()
-                                logger.info("Generated chat topic from AI", topic=topic)
+                            ai_response = praxia.diagnose_symptoms(message_content, user_profile, chat_topic)
+                    
+                        signal.alarm(0)  # Cancel timeout
+                    
+                    except TimeoutError:
+                        logger.error("AI processing timeout", user=request.user.username)
+                        ai_response = self._get_timeout_response()
                     except Exception as e:
-                        logger.error("Failed to generate topic", error=str(e))
-                        session.title = "Health Consultation"
-                        session.save()
+                        signal.alarm(0)  # Cancel timeout
+                        logger.error("AI processing error", error=str(e))
+                        ai_response = self._get_error_response(str(e))
         
-            session.save()
-            logger.info("Chat message processed", session_id=session_id, user=request.user.username)
-            return Response({
-                'user_message': ChatMessageSerializer(user_message).data,
-                'ai_message': ChatMessageSerializer(ai_message).data
-            })
-        except Exception as e:
-            logger.error("Unexpected error processing chat message", error=str(e))
-            try:
-                if 'user_message' in locals():
-                    error_message = ChatMessage.objects.create(
+            except Exception as e:
+                logger.error("Unexpected error in message processing", error=str(e))
+                ai_response = self._get_error_response("System temporarily unavailable")
+        
+            # IMPROVED: Save AI response with validation
+            if ai_response and isinstance(ai_response, dict):
+                try:
+                    # Ensure response is properly formatted
+                    formatted_response = self._format_ai_response(ai_response)
+                    
+                    ai_message = ChatMessage.objects.create(
                         session=session,
                         role='assistant',
-                        content=json.dumps({
-                            "diagnosis": {
-                                "conditions": ["I'm experiencing a temporary issue"],
-                                "next_steps": ["Please try rephrasing your question", "If the problem continues, please contact support"],
-                                "urgent": [],
-                                "advice": "I apologize for the technical difficulty. Could you try asking your question in a different way?",
-                                "clarification": ["Could you rephrase your health question?"]
-                            },
-                            "disclaimer": "This is a system message due to a temporary technical issue."
-                        })
+                        content=json.dumps(formatted_response, ensure_ascii=False)
                     )
+                    
+                    # Update session title if needed
+                    self._update_session_title(session, ai_response, message_content)
+                    
+                    session.save()
+                    logger.info("Message processed successfully", session_id=session_id, user=request.user.username)
+                    
                     return Response({
                         'user_message': ChatMessageSerializer(user_message).data,
-                        'ai_message': ChatMessageSerializer(error_message).data
+                        'ai_message': ChatMessageSerializer(ai_message).data
                     })
-                else:
+                    
+                except Exception as e:
+                    logger.error("Failed to save AI response", error=str(e))
                     return Response({
-                        'error': 'Unable to process your message at this time. Please try again.'
+                        'error': 'Failed to process AI response'
                     }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-            except Exception as inner_e:
-                logger.error("Failed to create error response", error=str(inner_e))
+            else:
+                logger.error("Invalid AI response format")
                 return Response({
-                    'error': 'System temporarily unavailable. Please try again.'
+                    'error': 'Invalid response from AI system'
                 }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            
+        except Exception as e:
+            logger.error("Critical error in chat message processing", error=str(e))
+            return Response({
+                'error': 'System error. Please try again.'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    def _get_timeout_response(self):
+        """Get response for timeout scenarios"""
+        return {
+            "diagnosis": {
+                "conditions": ["Processing timeout occurred"],
+                "next_steps": ["Please try again with a shorter message", "Contact support if the issue persists"],
+                "urgent": [],
+                "advice": "I'm taking longer than usual to process your request. Please try again.",
+                "clarification": ["Could you try rephrasing your question more concisely?"]
+            },
+            "disclaimer": "This is a timeout response. Please try again."
+        }
+
+    def _get_error_response(self, error_msg):
+        """Get response for error scenarios"""
+        return {
+            "diagnosis": {
+                "conditions": ["System temporarily unavailable"],
+                "next_steps": ["Please try again in a few moments", "Contact support if the issue persists"],
+                "urgent": [],
+                "advice": f"I'm experiencing technical difficulties: {error_msg}",
+                "clarification": ["Would you like to try again?"]
+            },
+            "disclaimer": "This is an error response due to technical issues."
+        }
+
+    def _format_ai_response(self, response):
+        """Ensure AI response is properly formatted"""
+        if not isinstance(response, dict):
+            return {"error": "Invalid response format"}
+        
+        # Ensure required fields exist
+        if 'diagnosis' not in response:
+            response['diagnosis'] = {
+                "conditions": ["Response formatting error"],
+                "next_steps": ["Please try again"],
+                "urgent": [],
+                "advice": "There was an issue formatting the response.",
+                "clarification": []
+            }
+        
+        return response
 
 class MedicalConsultationView(APIView):
     """View for medical consultations"""
