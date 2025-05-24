@@ -7,9 +7,10 @@ ENV BASE_DIR /app
 ENV NVIDIA_VISIBLE_DEVICES all
 ENV NVIDIA_DRIVER_CAPABILITIES compute,utility
 
-# Install system dependencies (including libraries needed for PyTorch)
+# Install system dependencies (including libraries needed for PyTorch and curl for health checks)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     netcat-traditional \
+    curl \
     gcc \
     g++ \
     build-essential \

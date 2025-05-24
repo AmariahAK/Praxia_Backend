@@ -24,6 +24,12 @@ services:
           memory: 2G
         reservations:
           memory: 1G
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
   redis:
     image: redis:7
@@ -32,6 +38,11 @@ services:
     restart: always
     networks:
       - praxia-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
   celery:
     build: .
@@ -46,8 +57,10 @@ services:
     environment:
       - SERVICE_NAME=celery
     depends_on:
-      - redis
-      - web
+      web:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     restart: always
     networks:
       - praxia-network
@@ -70,7 +83,8 @@ services:
     environment:
       - SERVICE_NAME=celery-beat
     depends_on:
-      - redis
+      redis:
+        condition: service_healthy
     restart: always
     networks:
       - praxia-network

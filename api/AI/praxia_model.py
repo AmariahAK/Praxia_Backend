@@ -156,6 +156,61 @@ class PraxiaAI:
             logger.error("Error initializing DenseNet model: %s", str(e))
             self.densenet_model = None
 
+    def _get_latest_health_data(self):
+        """
+        Get the latest health data from cache or external sources
+        """
+        try:
+            # Try to get cached health data first
+            cached_data = cache.get('latest_health_data')
+            if cached_data:
+                logger.info("Using cached health data")
+                return cached_data
+            
+            # If no cached data, create a basic health data structure
+            health_data = {
+                'health_news': [],
+                'research_trends': {},
+                'last_updated': datetime.now().isoformat()
+            }
+            
+            # Try to get latest health news
+            try:
+                health_news = self._scrape_health_news(source='all', limit=3)
+                health_data['health_news'] = health_news
+            except Exception as e:
+                logger.warning(f"Failed to get health news: {str(e)}")
+                health_data['health_news'] = []
+            
+            # Try to get research trends for common topics
+            try:
+                research_topics = ["COVID-19", "heart disease", "diabetes"]
+                research_data = {}
+                for topic in research_topics:
+                    try:
+                        research_data[topic] = self.get_medical_research(query=topic, limit=1)
+                    except Exception as e:
+                        logger.warning(f"Failed to get research for {topic}: {str(e)}")
+                        research_data[topic] = []
+                health_data['research_trends'] = research_data
+            except Exception as e:
+                logger.warning(f"Failed to get research trends: {str(e)}")
+                health_data['research_trends'] = {}
+            
+            # Cache the health data for 6 hours
+            cache.set('latest_health_data', health_data, 60 * 60 * 6)
+            logger.info("Health data updated and cached")
+            return health_data
+            
+        except Exception as e:
+            logger.error(f"Error getting latest health data: {str(e)}")
+            # Return basic structure if everything fails
+            return {
+                'health_news': [],
+                'research_trends': {},
+                'last_updated': datetime.now().isoformat()
+            }
+
     def _build_user_context(self, user_profile):
         if not user_profile:
             return ""
@@ -553,14 +608,14 @@ Your response must be valid JSON that can be parsed programmatically.
                     diagnosis_data = json.loads(response_text)
                 except json.JSONDecodeError:
                     # Try to extract JSON from markdown blocks if present
-                    if "" in response_text and "" in response_text:
-                        json_content = response_text.split("")[1].split("")[0].strip()
+                    if "```json" in response_text and "```" in response_text:
+                        json_content = response_text.split("```json")[1].split("```")[0].strip()
                         try:
                             diagnosis_data = json.loads(json_content)
                         except json.JSONDecodeError:
                             raise
-                    elif "" in response_text and "" in response_text:
-                        json_content = response_text.split("")[1].split("")[0].strip()
+                    elif "```" in response_text and "```" in response_text:
+                        json_content = response_text.split("```")[1].split("```")[0].strip()
                         try:
                             diagnosis_data = json.loads(json_content)
                         except json.JSONDecodeError:
@@ -626,7 +681,7 @@ Your response must be valid JSON that can be parsed programmatically.
         if cached_result:
             return cached_result
         try:
-            # Ensure query is a string and not None
+                        # Ensure query is a string and not None
             if not query or not isinstance(query, str):
                 query = "general medical research"
             
@@ -694,6 +749,125 @@ Your response must be valid JSON that can be parsed programmatically.
                 }
             ]
             return placeholder_results[:limit]
+
+    def analyze_diet(self, dietary_info, user_profile=None):
+        """
+        Analyze user's dietary information and provide recommendations
+        """
+        try:
+            cache_key = f"diet_analysis_{hash(dietary_info)}_{hash(str(user_profile))}"
+            cached_result = cache.get(cache_key)
+            if cached_result:
+                return cached_result
+
+            context = self._build_user_context(user_profile)
+            
+            prompt = f"""You are Praxia, a medical AI assistant specialized in nutrition. {self.identity}
+
+{context}
+
+Analyze this dietary information: {dietary_info}
+
+Provide a comprehensive dietary analysis in JSON format with these keys:
+1. "nutritional_assessment": Overall assessment of the diet
+2. "strengths": Positive aspects of the current diet
+3. "areas_for_improvement": Areas that need attention
+4. "recommendations": Specific dietary recommendations
+5. "health_considerations": Health implications based on user profile
+6. "meal_suggestions": Suggested meal ideas
+
+Your response must be valid JSON that can be parsed programmatically.
+"""
+            
+            response_text = self._call_together_ai(prompt)
+            
+            try:
+                diet_analysis = json.loads(response_text)
+            except json.JSONDecodeError:
+                # Try to extract JSON from markdown blocks
+                if "```json" in response_text:
+                    json_content = response_text.split("```json")[1].split("```")[0].strip()
+                    diet_analysis = json.loads(json_content)
+                else:
+                    raise
+            
+            result = {
+                "diet_analysis": diet_analysis,
+                "disclaimer": "This dietary advice is for informational purposes only. Consult with a registered dietitian for personalized nutrition plans."
+            }
+            
+            cache.set(cache_key, result, self.cache_timeout)
+            return result
+            
+        except Exception as e:
+            logger.error("Error in diet analysis", error=str(e))
+            return {
+                "diet_analysis": {
+                    "nutritional_assessment": "Unable to analyze diet at this time",
+                    "recommendations": ["Consult with a registered dietitian for personalized advice"],
+                    "health_considerations": ["Maintain a balanced diet with variety"]
+                },
+                "disclaimer": "This dietary advice is for informational purposes only."
+            }
+
+    def analyze_medication(self, medication_info, user_profile=None):
+        """
+        Analyze medication information and check for potential interactions
+        """
+        try:
+            cache_key = f"medication_analysis_{hash(medication_info)}_{hash(str(user_profile))}"
+            cached_result = cache.get(cache_key)
+            if cached_result:
+                return cached_result
+
+            context = self._build_user_context(user_profile)
+            
+            prompt = f"""You are Praxia, a medical AI assistant specialized in medication safety. {self.identity}
+
+{context}
+
+Analyze this medication information: {medication_info}
+
+Provide a medication analysis in JSON format with these keys:
+1. "medication_review": Overview of the medications mentioned
+2. "potential_interactions": Potential drug interactions to be aware of
+3. "side_effects": Common side effects to monitor
+4. "precautions": Important precautions based on user profile
+5. "recommendations": Recommendations for safe medication use
+6. "when_to_consult": When to contact healthcare provider
+
+Your response must be valid JSON that can be parsed programmatically.
+"""
+            
+            response_text = self._call_together_ai(prompt)
+            
+            try:
+                medication_analysis = json.loads(response_text)
+            except json.JSONDecodeError:
+                if "```json" in response_text:
+                    json_content = response_text.split("```json")[1].split("```")[0].strip()
+                    medication_analysis = json.loads(json_content)
+                else:
+                    raise
+            
+            result = {
+                "medication_analysis": medication_analysis,
+                "disclaimer": "This information is not a substitute for professional medical advice. Always consult your healthcare provider about medications."
+            }
+            
+            cache.set(cache_key, result, self.cache_timeout)
+            return result
+            
+        except Exception as e:
+            logger.error("Error in medication analysis", error=str(e))
+            return {
+                "medication_analysis": {
+                    "medication_review": "Unable to analyze medications at this time",
+                    "recommendations": ["Always consult your healthcare provider or pharmacist about medication concerns"],
+                    "when_to_consult": ["Contact your healthcare provider immediately if you experience adverse effects"]
+                },
+                "disclaimer": "This information is not a substitute for professional medical advice."
+            }
 
     def analyze_xray(self, image_data):
         if not hasattr(self, 'densenet_model') or self.densenet_model is None:
@@ -1009,6 +1183,39 @@ Your response must be valid JSON that can be parsed programmatically.
             return articles
         except Exception as e:
             logger.error(f"Error scraping CDC news: {str(e)}")
+            return []
+
+    def _scrape_mayo_news(self, limit=3):
+        """Mayo Clinic news scraper"""
+        try:
+            url = "https://www.mayoclinic.org/about-mayo-clinic/newsnetwork"
+            response = requests.get(url, timeout=10)
+            response.raise_for_status()
+            soup = BeautifulSoup(response.text, 'html.parser')
+            news_items = soup.select('.content-item')
+            articles = []
+            for item in news_items[:limit]:
+                try:
+                    title_elem = item.select_one('h3 a, h2 a')
+                    title = title_elem.text.strip() if title_elem else "No title"
+                    url = "https://www.mayoclinic.org" + title_elem['href'] if title_elem and 'href' in title_elem.attrs else "#"
+                    date_elem = item.select_one('.date')
+                    published_date = date_elem.text.strip() if date_elem else None
+                    content = self._get_article_content(url)
+                    articles.append({
+                        "title": title,
+                        "source": "Mayo Clinic",
+                        "url": url,
+                        "content": content,
+                        "image_url": None,
+                        "published_date": published_date
+                    })
+                except Exception as e:
+                    logger.warning(f"Error processing Mayo news item: {str(e)}")
+                    continue
+            return articles
+        except Exception as e:
+            logger.error(f"Error scraping Mayo news: {str(e)}")
             return []
 
     def _get_article_content(self, url):

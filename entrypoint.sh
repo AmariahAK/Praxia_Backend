@@ -28,7 +28,14 @@ if [ ! -f "/app/data/models/densenet_xray.pth" ] && [ ! -f "/app/data/models/den
     
     # Fix the model for our architecture
     echo "Fixing model architecture..."
-    python -c "from api.utils.model_fix import fix_densenet_model; fix_densenet_model()"
+    python -c "
+try:
+    from api.utils.model_fix import fix_densenet_model
+    fix_densenet_model()
+    print('Model fixed successfully')
+except Exception as e:
+    print(f'Error fixing model: {e}')
+"
   fi
 else
   if [ -f "/app/data/models/densenet_xray_fixed.pth" ]; then
@@ -42,12 +49,16 @@ else
     if [ ! -f "/app/data/models/densenet_xray_fixed.pth" ]; then
       echo "Fixing model architecture..."
       python -c "
-import torch.serialization
-from torch.serialization import add_safe_globals
-import torch.nn.modules.container
-add_safe_globals([torch.nn.modules.container.Sequential])
-from api.utils.model_fix import fix_densenet_model
-fix_densenet_model()
+try:
+    import torch.serialization
+    from torch.serialization import add_safe_globals
+    import torch.nn.modules.container
+    add_safe_globals([torch.nn.modules.container.Sequential])
+    from api.utils.model_fix import fix_densenet_model
+    fix_densenet_model()
+    print('Model fixed successfully')
+except Exception as e:
+    print(f'Error fixing model: {e}')
 "
     fi
   fi
@@ -119,7 +130,14 @@ fi
 
 # Run health check
 echo "Running initial health check..."
-python manage.py shell -c "from api.AI.ai_healthcheck import startup_health_check; startup_health_check()" || echo "Health check failed, continuing..."
+python manage.py shell -c "
+try:
+    from api.AI.ai_healthcheck import startup_health_check
+    startup_health_check()
+    print('Health check completed successfully')
+except Exception as e:
+    print(f'Health check failed: {e}')
+" || echo "Health check failed, continuing..."
 
 # Celery Tasks
 echo "Waiting for Redis to be ready..."
