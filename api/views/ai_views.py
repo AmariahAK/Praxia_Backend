@@ -190,10 +190,23 @@ class ChatMessageView(APIView):
                     }
         
             if ai_response and isinstance(ai_response, dict):
+                # Ensure the response is properly formatted for frontend consumption
+                formatted_response = ai_response.copy()
+                
+                # If it's a diagnosis response, ensure conditions are properly formatted
+                if 'diagnosis' in formatted_response and formatted_response['diagnosis'].get('conditions'):
+                    conditions = formatted_response['diagnosis']['conditions']
+                    if isinstance(conditions, list):
+                        # Make sure each condition is a string, not an object
+                        formatted_response['diagnosis']['conditions'] = [
+                            str(condition) if not isinstance(condition, str) else condition 
+                            for condition in conditions
+                        ]
+                
                 ai_message = ChatMessage.objects.create(
                     session=session,
                     role='assistant',
-                    content=json.dumps(ai_response)  
+                    content=json.dumps(formatted_response, ensure_ascii=False)  
                 )
             
                 # Update session title if it's a new session with generic title
@@ -203,10 +216,10 @@ class ChatMessageView(APIView):
                         if ai_response and isinstance(ai_response, dict) and ai_response.get('medical_topic'):
                             topic = ai_response['medical_topic']
                             # Clean and format the topic for title
-                            clean_title = ' '.join(topic.split()[:4])  # Limit to 4 words
-                            clean_title = clean_title.title()  # Capitalize
+                            clean_title = ' '.join(topic.split()[:4])  
+                            clean_title = clean_title.title()  
                             if clean_title and len(clean_title) > 3:
-                                session.title = clean_title[:50]  # Limit to 50 chars
+                                session.title = clean_title[:50]  
                                 session.save()
                                 logger.info("Generated chat topic from medical topic", topic=clean_title)
                         else:
@@ -232,7 +245,6 @@ class ChatMessageView(APIView):
             })
         except Exception as e:
             logger.error("Unexpected error processing chat message", error=str(e))
-            # Return a more helpful error response
             try:
                 if 'user_message' in locals():
                     error_message = ChatMessage.objects.create(
