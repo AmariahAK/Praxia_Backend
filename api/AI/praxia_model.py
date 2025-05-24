@@ -7,7 +7,8 @@ import collections
 import torch
 import structlog
 from datetime import datetime
-from django.utils import timezone
+import re
+from typing import Dict, List, Any
 from PIL import Image
 from io import BytesIO
 from django.conf import settings
@@ -301,32 +302,152 @@ class PraxiaAI:
         if not symptoms or len(symptoms.strip()) < 3:
             return "general health inquiry"
         
-        # Clean the input more safely
-        cleaned = str(symptoms).replace('<', '').replace('>', '').strip()
-        
-        # Handle greetings and extract the actual symptoms
-        greeting_phrases = ["hey praxia", "hi praxia", "hello", "greetings"]
-        lower_symptoms = cleaned.lower()
-        
-        for phrase in greeting_phrases:
-            if lower_symptoms.startswith(phrase):
-                cleaned = cleaned[len(phrase):].lstrip(" ,.;:!?")
-                break
-        
-        # Make sure we have valid content
-        if not cleaned or len(cleaned.strip()) < 3:
+        try:
+            # Clean the input more safely
+            cleaned = str(symptoms).replace('<', '').replace('>', '').strip()
+            
+            # Remove problematic characters that might cause separator issues
+            cleaned = re.sub(r'[^\w\s.,;:!?()-]', ' ', cleaned)
+            
+            # Handle greetings and extract the actual symptoms
+            greeting_phrases = ["hey praxia", "hi praxia", "hello", "greetings"]
+            lower_symptoms = cleaned.lower()
+            
+            for phrase in greeting_phrases:
+                if lower_symptoms.startswith(phrase):
+                    cleaned = cleaned[len(phrase):].lstrip(" ,.;:!?")
+                    break
+            
+            # Make sure we have valid content
+            if not cleaned or len(cleaned.strip()) < 3:
+                return "general health inquiry"
+            
+            # Normalize whitespace and quotes
+            cleaned = cleaned.replace("'", "'").replace(""", '"').replace(""", '"')
+            cleaned = cleaned.rstrip("'\"")
+            
+            if not cleaned.strip():
+                return "general health inquiry"
+            
+            # Remove excessive whitespace
+            cleaned = ' '.join(cleaned.split()) 
+            
+            # Limit length to prevent overly long queries
+            if len(cleaned) > 500:
+                cleaned = cleaned[:500] + "..."
+            
+            return cleaned.strip() if cleaned.strip() else "general health inquiry"
+            
+        except Exception as e:
+            logger.error("Error preprocessing symptoms", error=str(e), symptoms=str(symptoms)[:50])
             return "general health inquiry"
+
+    def _extract_medical_topic(self, symptoms: str, user_profile: Dict[str, Any] = None) -> str:
+        """
+        Extract a concise medical topic from symptoms for targeted searches
+        """
+        try:
+            # Clean and prepare the symptoms text
+            cleaned_symptoms = re.sub(r'[^\w\s]', ' ', symptoms.lower())
+            cleaned_symptoms = ' '.join(cleaned_symptoms.split())
+            
+            # Common medical terms and their categories
+            symptom_keywords = {
+                'respiratory': ['cough', 'breathing', 'chest pain', 'shortness of breath', 'wheezing', 'phlegm', 'runny nose', 'congestion'],
+                'cardiovascular': ['chest pain', 'heart palpitations', 'dizziness', 'fainting'],
+                'gastrointestinal': ['nausea', 'vomiting', 'diarrhea', 'abdominal pain', 'stomach', 'digestive'],
+                'neurological': ['headache', 'dizziness', 'numbness', 'tingling', 'memory', 'confusion'],
+                'musculoskeletal': ['joint pain', 'muscle pain', 'back pain', 'stiffness', 'swelling'],
+                'dermatological': ['rash', 'itching', 'skin', 'lesion', 'bump'],
+                'systemic': ['fever', 'fatigue', 'weight loss', 'weight gain', 'night sweats']
+            }
+            
+            # Find matching categories
+            matched_categories = []
+            for category, keywords in symptom_keywords.items():
+                if any(keyword in cleaned_symptoms for keyword in keywords):
+                    matched_categories.append(category)
+            
+            # Generate topic based on matched categories and key symptoms
+            if matched_categories:
+                primary_category = matched_categories[0]
+                
+                # Extract key symptoms for the topic
+                key_symptoms = []
+                for category, keywords in symptom_keywords.items():
+                    if category in matched_categories:
+                        for keyword in keywords:
+                            if keyword in cleaned_symptoms:
+                                key_symptoms.append(keyword)
+                
+                # Limit to top 3 most relevant symptoms
+                topic_symptoms = key_symptoms[:3]
+                topic = f"{primary_category} {' '.join(topic_symptoms)}"
+                
+                # Add demographic context if available
+                if user_profile:
+                    if user_profile.get('age'):
+                        age = int(user_profile['age'])
+                        if age < 18:
+                            topic = f"pediatric {topic}"
+                        elif age > 65:
+                            topic = f"elderly {topic}"
+                    
+                    if user_profile.get('gender') in ['male', 'female']:
+                        topic = f"{user_profile['gender']} {topic}"
+                
+                return topic
+            else:
+                # Fallback: extract key medical terms
+                medical_terms = re.findall(r'\b(?:pain|ache|fever|cough|fatigue|nausea|dizziness|headache|rash|swelling)\b', cleaned_symptoms)
+                if medical_terms:
+                    return ' '.join(medical_terms[:3])
+                else:
+                    return "general medical consultation"
+                    
+        except Exception as e:
+            logger.error("Error extracting medical topic", error=str(e))
+            return "general medical consultation"
+
+    def _create_targeted_search_queries(self, topic: str, user_profile: Dict[str, Any] = None, max_queries: int = 3) -> List[str]:
+        """
+        Create targeted search queries based on the extracted topic
+        """
+        queries = [topic]
         
-        cleaned = cleaned.replace("'", "'").replace(""", '"').replace(""", '"')
+        if user_profile:
+            # Add demographic-specific queries
+            if user_profile.get('country'):
+                country = user_profile['country'].lower()
+                # Regional health considerations
+                regional_conditions = {
+                    'kenya': ['malaria', 'tuberculosis'],
+                    'nigeria': ['malaria', 'sickle cell'],
+                    'india': ['tuberculosis', 'diabetes'],
+                    'usa': ['diabetes', 'hypertension'],
+                    'uk': ['diabetes', 'cardiovascular'],
+                    'canada': ['diabetes', 'cardiovascular'],
+                    'australia': ['skin cancer'],
+                    'brazil': ['dengue', 'zika'],
+                    'china': ['hepatitis', 'tuberculosis'],
+                    'japan': ['stroke', 'cardiovascular'],
+                }
+                
+                for region, conditions in regional_conditions.items():
+                    if region in country:
+                        for condition in conditions[:1]:  # Limit to 1 condition
+                            queries.append(f"{topic} {condition}")
+                        break
+            
+            # Add age-specific query
+            if user_profile.get('age'):
+                age = int(user_profile['age'])
+                if age < 18:
+                    queries.append(f"{topic} pediatric children")
+                elif age > 65:
+                    queries.append(f"{topic} elderly geriatric")
         
-        cleaned = cleaned.rstrip("'\"")
-        
-        if not cleaned.strip():
-            return "general health inquiry"
-        
-        cleaned = ' '.join(cleaned.split()) 
-        
-        return cleaned.strip() if cleaned.strip() else "general health inquiry"
+        return queries[:max_queries]
 
     def diagnose_symptoms(self, symptoms, user_profile=None, chat_topic=None):
         try:
@@ -341,8 +462,16 @@ class PraxiaAI:
                             chat_topic=chat_topic)
             else:
                 logger.warning("Diagnosing without user profile", symptoms=processed_symptoms[:30])
+
+            # Extract medical topic first
+            if chat_topic and chat_topic != "New Chat":
+                medical_topic = chat_topic
+            else:
+                medical_topic = self._extract_medical_topic(processed_symptoms, user_profile)
+            
+            logger.info("Extracted medical topic", topic=medical_topic)
         
-            cache_key = f"diagnosis_{hash(processed_symptoms)}_{hash(str(user_profile))}_{hash(str(chat_topic))}"
+            cache_key = f"diagnosis_{hash(processed_symptoms)}_{hash(str(user_profile))}_{hash(medical_topic)}"
             cached_result = cache.get(cache_key)
             if cached_result:
                 logger.info("Returning cached diagnosis", symptoms=processed_symptoms[:30])
@@ -351,17 +480,36 @@ class PraxiaAI:
             context = self._build_user_context(user_profile)
             health_data = self._get_latest_health_data()
             
-            # Use chat topic for more targeted search if available
-            search_topic = chat_topic if chat_topic and chat_topic != "New Chat" else processed_symptoms
-            research_results = self._get_targeted_research_data(search_topic, user_profile, limit=5)
+            # Create targeted search queries based on the extracted topic
+            search_queries = self._create_targeted_search_queries(medical_topic, user_profile, max_queries=3)
             
-            # Filter research results based on user profile
-            filtered_research = self._filter_research_by_relevance(research_results, user_profile, max_results=3)
+            # Get research data using targeted queries
+            all_research = []
+            for query in search_queries:
+                try:
+                    research = self.get_medical_research(query, limit=2)
+                    all_research.extend(research)
+                    logger.info("Retrieved research for query", query=query, count=len(research))
+                except Exception as e:
+                    logger.warning("Failed to get research for query", query=query, error=str(e))
+                    continue
+            
+            # Remove duplicates and limit results
+            seen_titles = set()
+            filtered_research = []
+            for article in all_research:
+                title = article.get('title', '').lower().strip()
+                if title and title not in seen_titles and len(filtered_research) < 5:
+                    seen_titles.add(title)
+                    filtered_research.append(article)
+            
+            # Filter research results based on user profile relevance
+            final_research = self._filter_research_by_relevance(filtered_research, user_profile, max_results=3)
             
             research_context = ""
-            if filtered_research:
-                research_context = "Relevant medical research (filtered for your profile):\n"
-                for i, article in enumerate(filtered_research):
+            if final_research:
+                research_context = "Relevant medical research:\n"
+                for i, article in enumerate(final_research):
                     research_context += f"{i+1}. {article.get('title', 'Untitled')} ({article.get('journal', 'Unknown')}): "
                     research_context += f"{article.get('abstract', 'No abstract')[:200]}...\n"
             
@@ -377,6 +525,7 @@ class PraxiaAI:
 {context}
 
 Based on these symptoms: {processed_symptoms}
+Medical topic: {medical_topic}
 Chat context: {chat_topic or 'General consultation'}
 
 {research_context}
@@ -429,11 +578,16 @@ Your response must be valid JSON that can be parsed programmatically.
                     
                 result = {
                     "diagnosis": diagnosis_data,
-                    "related_research": filtered_research,
+                    "related_research": final_research,
+                    "medical_topic": medical_topic,
+                    "search_queries_used": search_queries,
                     "disclaimer": "This information is for educational purposes only and not a substitute for professional medical advice."
                 }
                 cache.set(cache_key, result, self.cache_timeout)
-                logger.info("Diagnosis completed successfully", symptoms=processed_symptoms[:30])
+                logger.info("Diagnosis completed successfully", 
+                           symptoms=processed_symptoms[:30], 
+                           topic=medical_topic,
+                           research_count=len(final_research))
                 return result
             except Exception as e:
                 logger.error("Error in symptom diagnosis", error=str(e), symptoms=processed_symptoms[:30])
@@ -446,6 +600,7 @@ Your response must be valid JSON that can be parsed programmatically.
                         "advice": "I apologize, but I'm having trouble analyzing your symptoms right now. Please try again or consult with a healthcare professional.",
                         "clarification": ["Could you provide more details about your symptoms?"]
                     },
+                    "medical_topic": medical_topic,
                     "disclaimer": "This information is for educational purposes only and not a substitute for professional medical advice."
                 }
         except Exception as e:
@@ -458,120 +613,87 @@ Your response must be valid JSON that can be parsed programmatically.
                     "advice": "I apologize, but I'm having trouble analyzing your symptoms right now. Please try again or consult with a healthcare professional.",
                     "clarification": ["Could you provide more details about your symptoms?"]
                 },
+                "medical_topic": "general medical consultation",
                 "disclaimer": "This information is for educational purposes only and not a substitute for professional medical advice."
             }
 
-    def _get_targeted_research_data(self, topic, user_profile=None, limit=5):
+    def get_medical_research(self, query, limit=5):
         """
-        Get research data using targeted search terms based on topic and user profile
+        Updated to handle shorter, more targeted queries
         """
+        cache_key = f"research_{hash(query)}_{limit}"
+        cached_result = cache.get(cache_key)
+        if cached_result:
+            return cached_result
         try:
-            # Create targeted search terms
-            search_terms = self._create_search_terms_from_topic(topic, user_profile)
+            # Ensure query is a string and not None
+            if not query or not isinstance(query, str):
+                query = "general medical research"
             
-            all_results = []
+            # Clean and limit query length
+            query = query.strip()
+            if len(query) > 100:  # Limit query length
+                query = query[:100]
             
-            for search_term in search_terms[:3]:  # Limit to top 3 search terms to avoid too many requests
-                try:
-                    results = self.get_medical_research(search_term, limit=max(2, limit // len(search_terms)))
-                    if results:
-                        all_results.extend(results)
-                        logger.info("Retrieved research for term", term=search_term, count=len(results))
-                except Exception as e:
-                    logger.warning("Failed to get research for term", term=search_term, error=str(e))
-                    continue
+            # Create a more targeted PubMed search
+            search_term = f"{query} AND (Review[ptyp] OR Clinical Trial[ptyp] OR Case Reports[ptyp])"
             
-            # Remove duplicates based on title
-            seen_titles = set()
-            unique_results = []
-            for result in all_results:
-                title = result.get('title', '').lower().strip()
-                if title and title not in seen_titles:
-                    seen_titles.add(title)
-                    unique_results.append(result)
+            logger.info("Medical research query", search_term=search_term)
             
-            return unique_results[:limit]
-            
-        except Exception as e:
-            logger.error("Error in targeted research data retrieval", error=str(e), topic=topic)
-            # Fallback to original method
-            return self.get_medical_research(topic, limit=limit)
-
-    def _get_latest_health_data(self):
-        """Get the latest health check data for AI context"""
-        from ..models import HealthCheckResult
-
-        latest_check = HealthCheckResult.objects.order_by('-timestamp').first()
-        if latest_check:
-            return latest_check.external_data
-        return {}
-
-    def _get_topic_specific_data(self, topic, limit=3):
-        """Get topic-specific data for the current conversation"""
-        health_data = self._get_latest_health_data()
-        if 'research_trends' in health_data:
-            for research_topic, articles in health_data['research_trends'].items():
-                if topic.lower() in research_topic.lower():
-                    logger.info("Using cached research for topic", topic=topic)
-                    return articles[:limit]
-        logger.info("Performing new search for topic", topic=topic)
-        return self.get_medical_research(topic, limit=limit)
-
-    def _scrape_mayo_news(self, limit=3):
-        try:
-            # Use a different Mayo Clinic endpoint that's more accessible
-            url = "https://www.mayoclinic.org/about-mayo-clinic/news"
-            headers = {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-            }
-            response = requests.get(url, timeout=10, headers=headers)
-            response.raise_for_status()
-            soup = BeautifulSoup(response.text, 'html.parser')
-            
-            # Try multiple selectors for news items
-            news_items = soup.select('article') or soup.select('.content-item') or soup.select('.news-item')
+            results = self.pubmed_client.query(search_term, max_results=limit)
             articles = []
+            for article in results:
+                # Safely handle None values
+                title = getattr(article, 'title', None) or "Research Article"
+                authors = getattr(article, 'authors', None)
+                journal = getattr(article, 'journal', None) or "Medical Journal"
+                
+                # Safely process authors
+                author_str = "Unknown"
+                if authors and isinstance(authors, list):
+                    try:
+                        author_str = ", ".join([
+                            f"{author.get('lastname', '')} {author.get('firstname', [''])[0]}"
+                            for author in authors[:3]  # Limit to first 3 authors
+                            if isinstance(author, dict) and author.get('lastname')
+                        ]) or "Unknown"
+                    except (AttributeError, TypeError, IndexError):
+                        author_str = "Unknown"
+                
+                # Safely handle other attributes
+                pub_date = getattr(article, 'publication_date', None)
+                pub_date_str = str(pub_date) if pub_date else "Unknown"
+                
+                doi = getattr(article, 'doi', None)
+                abstract = getattr(article, 'abstract', None) or "No abstract available"
+                
+                article_data = {
+                    "title": title,
+                    "authors": author_str,
+                    "journal": journal,
+                    "publication_date": pub_date_str,
+                    "doi": doi,
+                    "abstract": abstract
+                }
+                articles.append(article_data)
             
-            for item in news_items[:limit]:
-                try:
-                    title_elem = item.select_one('h2, h3, .title, .headline')
-                    title = title_elem.text.strip() if title_elem else "Health News Update"
-                    
-                    link_elem = item.select_one('a')
-                    url = link_elem['href'] if link_elem and 'href' in link_elem.attrs else "#"
-                    if url.startswith('/'):
-                        url = "https://www.mayoclinic.org" + url
-                    
-                    # Get some content text if available
-                    content_elem = item.select_one('p, .summary, .excerpt')
-                    content = content_elem.text.strip() if content_elem else "Mayo Clinic health information"
-                    
-                    articles.append({
-                        "title": title,
-                        "source": "Mayo Clinic",
-                        "url": url,
-                        "content": content,
-                        "image_url": None,
-                        "published_date": None
-                    })
-                except Exception as e:
-                    logger.warning(f"Error processing Mayo Clinic news item: {str(e)}")
-                    continue
-            
+            cache.set(cache_key, articles, self.cache_timeout)
+            logger.info("Medical research retrieved successfully", query=query, count=len(articles))
             return articles
-        except requests.exceptions.RequestException as e:
-            logger.error(f"Error scraping Mayo Clinic news: {str(e)}")
-            # Return fallback Mayo Clinic content
-            return [{
-                "title": "Mayo Clinic Health Information",
-                "source": "Mayo Clinic",
-                "url": "https://www.mayoclinic.org/",
-                "content": "Access comprehensive health information and medical expertise from Mayo Clinic.",
-                "published_date": datetime.now().strftime("%Y-%m-%d")
-            }]
         except Exception as e:
-            logger.error(f"Unexpected error scraping Mayo Clinic: {str(e)}")
-            return []
+            logger.error("Error retrieving medical research", error=str(e), query=query)
+            # Return safe placeholder results
+            placeholder_results = [
+                {
+                    "title": f"Recent advances in {query[:50]}", 
+                    "authors": "Medical Research Team", 
+                    "journal": "Medical Journal", 
+                    "publication_date": "2023",
+                    "doi": None,
+                    "abstract": f"Recent research in {query[:50]} and related medical conditions."
+                }
+            ]
+            return placeholder_results[:limit]
 
     def analyze_xray(self, image_data):
         if not hasattr(self, 'densenet_model') or self.densenet_model is None:
@@ -683,210 +805,6 @@ Your response must be valid JSON that can be parsed programmatically.
         except Exception as e:
             logger.error("Error in X-ray analysis", error=str(e))
             return {"error": str(e), "message": "Unable to process X-ray at this time."}
-
-    def get_medical_research(self, query, limit=5):
-        cache_key = f"research_{hash(query)}_{limit}"
-        cached_result = cache.get(cache_key)
-        if cached_result:
-            return cached_result
-        try:
-            # Ensure query is a string and not None
-            if not query or not isinstance(query, str):
-                query = "general medical research"
-            
-            search_term = f"{query} AND (Review[ptyp] OR Clinical Trial[ptyp])"
-            results = self.pubmed_client.query(search_term, max_results=limit)
-            articles = []
-            for article in results:
-                # Safely handle None values
-                title = getattr(article, 'title', None) or "Research Article"
-                authors = getattr(article, 'authors', None)
-                journal = getattr(article, 'journal', None) or "Medical Journal"
-                
-                # Safely process authors
-                author_str = "Unknown"
-                if authors and isinstance(authors, list):
-                    try:
-                        author_str = ", ".join([
-                            f"{author.get('lastname', '')} {author.get('firstname', [''])[0]}"
-                            for author in authors[:3]  # Limit to first 3 authors
-                            if isinstance(author, dict) and author.get('lastname')
-                        ]) or "Unknown"
-                    except (AttributeError, TypeError, IndexError):
-                        author_str = "Unknown"
-                
-                # Safely handle other attributes
-                pub_date = getattr(article, 'publication_date', None)
-                pub_date_str = str(pub_date) if pub_date else "Unknown"
-                
-                doi = getattr(article, 'doi', None)
-                abstract = getattr(article, 'abstract', None) or "No abstract available"
-                
-                article_data = {
-                    "title": title,
-                    "authors": author_str,
-                    "journal": journal,
-                    "publication_date": pub_date_str,
-                    "doi": doi,
-                    "abstract": abstract
-                }
-                articles.append(article_data)
-            
-            cache.set(cache_key, articles, self.cache_timeout)
-            logger.info("Medical research retrieved successfully", query=query, count=len(articles))
-            return articles
-        except Exception as e:
-            logger.warning("Error retrieving medical research", error=str(e), query=query)
-            # Return safe placeholder results
-            placeholder_results = [
-                {
-                    "title": "Recent advances in medical diagnosis and treatment", 
-                    "authors": "Smith J, et al.", 
-                    "journal": "Medical Journal", 
-                    "publication_date": "2023",
-                    "doi": None,
-                    "abstract": "Recent research in medical diagnosis and treatment methods."
-                },
-                {
-                    "title": "Clinical guidelines for symptom management", 
-                    "authors": "Johnson M, et al.", 
-                    "journal": "Healthcare Research", 
-                    "publication_date": "2022",
-                    "doi": None,
-                    "abstract": "Clinical guidelines for effective symptom management and patient care."
-                }
-            ]
-            return placeholder_results[:limit]
-
-    def analyze_diet(self, diet_info, user_profile=None):
-        if not diet_info or len(diet_info.strip()) < 5:
-            return {
-                "error": "Insufficient diet information",
-                "message": "Please provide more details about your diet for analysis."
-            }
-        cache_key = f"diet_{hash(diet_info)}_{hash(str(user_profile))}"
-        cached_result = cache.get(cache_key)
-        if cached_result:
-            logger.info("Returning cached diet analysis")
-            return cached_result
-        context = self._build_user_context(user_profile)
-        research_results = self.get_medical_research(f"nutrition {diet_info}", limit=2)
-        research_context = ""
-        if research_results:
-            research_context = "Relevant nutritional research:\n"
-            for i, article in enumerate(research_results):
-                research_context += f"{i+1}. {article.get('title')} ({article.get('journal')}): "
-                research_context += f"{article.get('abstract')[:200]}...\n"
-        prompt = f"""You are Praxia, a medical AI assistant specializing in nutrition. {self.identity}
-
-{context}
-
-Based on this diet information: {diet_info}
-
-{research_context}
-
-Analyze this diet and provide a response in JSON format with these keys:
-1. "assessment": Overall assessment of the diet's nutritional value
-2. "deficiencies": [Potential nutritional deficiencies with confidence scores (0-100)]
-3. "recommendations": [Specific foods or supplements to consider adding]
-4. "concerns": [Potential health concerns related to this diet]
-5. "positives": [Positive aspects of the current diet]
-
-Your response must be valid JSON that can be parsed programmatically.
-"""
-        try:
-            response_text = self._call_together_ai(prompt)
-            try:
-                diet_data = json.loads(response_text)
-            except json.JSONDecodeError:
-                logger.warning("Failed to parse JSON response for diet analysis", response=response_text[:100])
-                diet_data = {
-                    "assessment": "Unable to parse structured assessment from response",
-                    "deficiencies": ["Unable to parse deficiencies from response"],
-                    "recommendations": ["Consult with a nutritionist for personalized advice"],
-                    "concerns": ["Unable to determine concerns from the provided information"],
-                    "positives": ["Unable to determine positive aspects from the provided information"]
-                }
-            result = {
-                "analysis": diet_data,
-                "related_research": research_results,
-                "disclaimer": "This information is for educational purposes only and not a substitute for professional nutritional advice."
-            }
-            cache.set(cache_key, result, self.cache_timeout)
-            logger.info("Diet analysis completed successfully")
-            return result
-        except Exception as e:
-            logger.error("Error in diet analysis", error=str(e))
-            return {
-                "error": str(e),
-                "message": "Unable to process diet analysis at this time.",
-                "disclaimer": "Please consult with a nutritionist for professional advice."
-            }
-
-    def analyze_medication(self, medication_info, user_profile=None):
-        if not medication_info or len(medication_info.strip()) < 3:
-            return {
-                "error": "Insufficient medication information",
-                "message": "Please provide more details about your medications for analysis."
-            }
-        cache_key = f"medication_{hash(medication_info)}_{hash(str(user_profile))}"
-        cached_result = cache.get(cache_key)
-        if cached_result:
-            logger.info("Returning cached medication analysis")
-            return cached_result
-        context = self._build_user_context(user_profile)
-        research_results = self.get_medical_research(f"medication {medication_info} interactions", limit=2)
-        research_context = ""
-        if research_results:
-            research_context = "Relevant medication research:\n"
-            for i, article in enumerate(research_results):
-                research_context += f"{i+1}. {article.get('title')} ({article.get('journal')}): "
-                research_context += f"{article.get('abstract')[:200]}...\n"
-        prompt = f"""You are Praxia, a medical AI assistant specializing in pharmacology. {self.identity}
-
-{context}
-
-Based on this medication information: {medication_info}
-
-{research_context}
-
-Analyze these medications and provide a response in JSON format with these keys:
-1. "overview": General information about the medications mentioned
-2. "interactions": [Potential interactions between medications, with severity levels]
-3. "side_effects": [Common side effects to be aware of]
-4. "precautions": [Important precautions when taking these medications]
-5. "questions": [Questions the patient should ask their healthcare provider]
-
-Your response must be valid JSON that can be parsed programmatically.
-"""
-        try:
-            response_text = self._call_together_ai(prompt)
-            try:
-                medication_data = json.loads(response_text)
-            except json.JSONDecodeError:
-                logger.warning("Failed to parse JSON response for medication analysis", response=response_text[:100])
-                medication_data = {
-                    "overview": response_text,
-                    "interactions": ["Unable to parse interactions from response"],
-                    "side_effects": ["Consult with a healthcare provider for side effect information"],
-                    "precautions": ["Consult with a healthcare provider before changing any medication regimen"],
-                    "questions": ["Ask your doctor about potential interactions with your current medications"]
-                }
-            result = {
-                "analysis": medication_data,
-                "related_research": research_results,
-                "disclaimer": "This information is for educational purposes only. Always consult with a healthcare provider before making any changes to your medication regimen."
-            }
-            cache.set(cache_key, result, self.cache_timeout)
-            logger.info("Medication analysis completed successfully")
-            return result
-        except Exception as e:
-            logger.error("Error in medication analysis", error=str(e))
-            return {
-                "error": str(e),
-                "message": "Unable to process medication analysis at this time.",
-                "disclaimer": "Please consult with a healthcare provider for professional advice."
-            }
 
     def _call_together_ai(self, prompt):
         url = "https://api.together.xyz/v1/completions"

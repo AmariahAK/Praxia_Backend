@@ -192,19 +192,29 @@ class ChatMessageView(APIView):
             
                 # Update session title if it's a new session with generic title
                 if session.title == "New Chat" and len(session.messages.all()) <= 2:
-                    praxia = PraxiaAI()
                     try:
-                        # Create a safer topic generation prompt
-                        topic_prompt = f"Generate a short 3-5 word title for a medical conversation about: {message_content[:100]}. Respond with only the title, no quotes or extra text."
-                        topic = praxia._call_together_ai(topic_prompt).strip()
-                        topic = topic.replace('"', '').replace("'", "").strip()
-                        if topic and len(topic) > 0 and len(topic) < 100:
-                            session.title = topic[:50]  # Limit to 50 chars
-                            session.save()
-                            logger.info("Generated chat topic", topic=topic)
+                        # Use the extracted medical topic for the session title
+                        if ai_response and isinstance(ai_response, dict) and ai_response.get('medical_topic'):
+                            topic = ai_response['medical_topic']
+                            # Clean and format the topic for title
+                            clean_title = ' '.join(topic.split()[:4])  # Limit to 4 words
+                            clean_title = clean_title.title()  # Capitalize
+                            if clean_title and len(clean_title) > 3:
+                                session.title = clean_title[:50]  # Limit to 50 chars
+                                session.save()
+                                logger.info("Generated chat topic from medical topic", topic=clean_title)
+                        else:
+                            # Fallback to original method
+                            praxia = PraxiaAI()
+                            topic_prompt = f"Generate a short 3-4 word medical title for: {message_content[:50]}. Respond with only the title, no quotes."
+                            topic = praxia._call_together_ai(topic_prompt).strip()
+                            topic = topic.replace('"', '').replace("'", "").strip()
+                            if topic and len(topic) > 0 and len(topic) < 100:
+                                session.title = topic[:50]
+                                session.save()
+                                logger.info("Generated chat topic from AI", topic=topic)
                     except Exception as e:
                         logger.error("Failed to generate topic", error=str(e))
-                        # Set a default meaningful title
                         session.title = "Health Consultation"
                         session.save()
         
