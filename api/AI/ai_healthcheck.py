@@ -1,10 +1,5 @@
-import os
-import requests
 import pybreaker
 import json
-import pymed
-import numpy as np
-import torch
 from django.conf import settings
 from django.core.cache import cache
 from django.utils import timezone
@@ -12,9 +7,7 @@ from ..models import HealthCheckResult
 from datetime import timedelta
 from celery import shared_task
 import structlog
-from datetime import datetime
-
-from .praxia_model import PraxiaAI, scrape_health_news, diagnose_symptoms_task
+from .praxia_model import PraxiaAI, scrape_health_news
 
 logger = structlog.get_logger(__name__)
 

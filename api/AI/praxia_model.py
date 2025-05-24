@@ -1098,3 +1098,113 @@ Summary:"""
         except Exception as e:
             logger.error(f"Error summarizing article: {str(e)}")
             return content[:max_length]
+        
+@shared_task
+def analyze_xray_task(xray_id, image_path):
+    """
+    Celery task to analyze X-ray images asynchronously
+    """
+    try:
+        from ..models import XRayAnalysis
+        
+        # Get the XRayAnalysis object
+        xray = XRayAnalysis.objects.get(id=xray_id)
+        
+        # Initialize PraxiaAI
+        praxia = PraxiaAI()
+        
+        # Perform the analysis
+        analysis_result = praxia.analyze_xray(image_path)
+        
+        # Update the XRayAnalysis object with results
+        if isinstance(analysis_result, dict):
+            xray.analysis_result = analysis_result.get('analysis', 'Analysis completed')
+            xray.detected_conditions = analysis_result.get('detected_conditions', {})
+            xray.confidence_scores = analysis_result.get('confidence_scores', {})
+        else:
+            xray.analysis_result = str(analysis_result)
+            xray.detected_conditions = {}
+            xray.confidence_scores = {}
+        
+        xray.save()
+        
+        logger.info("X-ray analysis completed", xray_id=xray_id)
+        return analysis_result
+        
+    except Exception as e:
+        logger.error("Error in X-ray analysis task", error=str(e), xray_id=xray_id)
+        
+        # Update the XRayAnalysis object with error
+        try:
+            xray = XRayAnalysis.objects.get(id=xray_id)
+            xray.analysis_result = f"Analysis failed: {str(e)}"
+            xray.detected_conditions = {"error": "analysis_failed"}
+            xray.confidence_scores = {}
+            xray.save()
+        except Exception as save_error:
+            logger.error("Failed to save error state", error=str(save_error))
+        
+        raise
+
+@shared_task
+def scrape_health_news(source='all', limit=3):
+    """
+    Celery task to scrape health news asynchronously
+    """
+    try:
+        praxia = PraxiaAI()
+        news_articles = praxia._scrape_health_news(source, limit)
+        
+        # Save to database
+        from ..models import HealthNews
+        from datetime import datetime
+        
+        saved_articles = []
+        for article in news_articles:
+            try:
+                # Create or update the news article
+                obj, created = HealthNews.objects.get_or_create(
+                    url=article.get('url', ''),
+                    defaults={
+                        'title': article.get('title', 'Health News'),
+                        'source': article.get('source', 'Unknown'),
+                        'summary': article.get('summary', ''),
+                        'original_content': article.get('content', ''),
+                        'image_url': article.get('image_url'),
+                        'published_date': article.get('published_date')
+                    }
+                )
+                saved_articles.append({
+                    'id': obj.id,
+                    'title': obj.title,
+                    'source': obj.source,
+                    'url': obj.url,
+                    'summary': obj.summary,
+                    'created': created
+                })
+            except Exception as e:
+                logger.error("Error saving news article", error=str(e), article_title=article.get('title', 'Unknown'))
+                continue
+        
+        logger.info("Health news scraping completed", source=source, count=len(saved_articles))
+        return saved_articles
+        
+    except Exception as e:
+        logger.error("Error in health news scraping task", error=str(e), source=source)
+        raise
+
+@shared_task
+def diagnose_symptoms_task(symptoms, user_profile=None):
+    """
+    Celery task for symptom diagnosis (if you need async diagnosis)
+    """
+    try:
+        praxia = PraxiaAI()
+        diagnosis_result = praxia.diagnose_symptoms(symptoms, user_profile)
+        
+        logger.info("Symptom diagnosis completed", symptoms=symptoms[:50])
+        return diagnosis_result
+        
+    except Exception as e:
+        logger.error("Error in symptom diagnosis task", error=str(e), symptoms=symptoms[:50])
+        raise
