@@ -53,16 +53,30 @@ def scheduled_health_check():
         results["status"] = "degraded"
 
     # Check circuit breakers
-    from ..circuit_breaker import who_breaker, mayo_breaker, together_ai_breaker, pubmed_breaker
+    from ..circuit_breaker import who_breaker, mayo_breaker, together_ai_breaker, pubmed_breaker, rss_breaker
     circuit_breaker_status = check_circuit_breakers()
     results["services"]["circuit_breakers"] = circuit_breaker_status
+
+    # Check RSS feed status
+    try:
+        rss_status = cache.get('rss_feed_status', {})
+        results["services"]["rss_feeds"] = rss_status
+        
+        # Check if any RSS feeds are operational
+        operational_rss = sum(1 for status in rss_status.values() if status == 'operational')
+        if operational_rss == 0 and rss_status:
+            results["status"] = "degraded"
+            logger.warning("No RSS feeds are operational")
+    except Exception as e:
+        results["services"]["rss_feeds"] = f"error: {str(e)}"
 
     # Check external services
     external_services = {
         "who_api": who_breaker,
         "mayo_clinic": mayo_breaker,
         "together_ai": together_ai_breaker,
-        "pubmed": pubmed_breaker
+        "pubmed": pubmed_breaker,
+        "rss_feeds": rss_breaker
     }
     for name, breaker in external_services.items():
         if breaker.current_state == pybreaker.STATE_CLOSED:
