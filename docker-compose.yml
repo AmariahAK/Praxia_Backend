@@ -13,10 +13,11 @@ services:
     environment:
       - ENVIRONMENT=development
       - SERVICE_NAME=web
-      - CELERY_WORKER_MAX_MEMORY_PER_CHILD=500000  # 500MB
+      - CELERY_WORKER_MAX_MEMORY_PER_CHILD=500000
       - CELERY_WORKER_MAX_TASKS_PER_CHILD=100
     depends_on:
-      - redis
+      redis:
+        condition: service_healthy
     restart: always
     networks:
       - praxia-network
@@ -30,8 +31,8 @@ services:
       test: ["CMD", "curl", "-f", "http://localhost:8000/api/health/"]
       interval: 30s
       timeout: 10s
-      retries: 3
-      start_period: 40s
+      retries: 5
+      start_period: 60s
     ulimits:
       nofile:
         soft: 65536
@@ -47,9 +48,10 @@ services:
     command: redis-server --maxmemory 512mb --maxmemory-policy allkeys-lru
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
   celery:
     build: .
@@ -63,11 +65,11 @@ services:
       - ./.env
     environment:
       - SERVICE_NAME=celery
-      - CELERY_WORKER_MAX_MEMORY_PER_CHILD=400000  # 400MB
+      - CELERY_WORKER_MAX_MEMORY_PER_CHILD=400000
       - CELERY_WORKER_MAX_TASKS_PER_CHILD=50
       - CELERY_WORKER_DISABLE_RATE_LIMITS=True
       - OMP_NUM_THREADS=2
-      - CUDA_VISIBLE_DEVICES=""  # Disable CUDA for workers
+      - CUDA_VISIBLE_DEVICES=""
     depends_on:
       web:
         condition: service_healthy
@@ -99,6 +101,8 @@ services:
     environment:
       - SERVICE_NAME=celery-beat
     depends_on:
+      web:
+        condition: service_healthy
       redis:
         condition: service_healthy
     restart: always
@@ -121,6 +125,8 @@ services:
     environment:
       - SERVICE_NAME=celery-monitor
     depends_on:
+      web:
+        condition: service_healthy
       redis:
         condition: service_healthy
     restart: always

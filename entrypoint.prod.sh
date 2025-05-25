@@ -3,80 +3,79 @@
 # Set up error handling
 set -e
 
-# Download model weights if they don't exist
-echo "Checking for DenseNet121 model weights..."
-if [ ! -f "/app/data/models/densenet_xray.pth" ] && [ ! -f "/app/data/models/densenet_xray_fixed.pth" ]; then
-  echo "Downloading DenseNet121 model weights..."
-  # Try up to 3 times to download the model
-  for i in {1..3}; do
-    echo "Attempt $i to download model weights..."
-    python -m api.utils.download_model && break || {
-      echo "Download failed, retrying..."
-      sleep 10
-    }
-  done
-  
-  if [ ! -f "/app/data/models/densenet_xray.pth" ]; then
-    echo "Warning: Failed to download model weights after multiple attempts."
-    # Create a placeholder file to prevent repeated download attempts
-    touch /app/data/models/densenet_xray.pth.failed
-    echo "Will attempt to run without AI model..."
-  else
-    echo "Model weights downloaded successfully!"
-    echo "SUCCESS: $(date)" > /app/data/models/download_success_log.txt
-    ls -la /app/data/models/
+echo "=== Starting ${SERVICE_NAME:-unknown} service (PRODUCTION) ==="
+
+# Function to wait for service
+wait_for_service() {
+    local host=$1
+    local port=$2
+    local service_name=$3
+    local max_attempts=60  # Increased for production
+    local attempt=1
     
-    # Fix the model for our architecture
-    echo "Fixing model architecture..."
-    python -c "
-try:
-    from api.utils.model_fix import fix_densenet_model
-    fix_densenet_model()
-    print('Model fixed successfully')
-except Exception as e:
-    print(f'Error fixing model: {e}')
-"
-  fi
-else
-  if [ -f "/app/data/models/densenet_xray_fixed.pth" ]; then
-    echo "Fixed model weights already exist at /app/data/models/densenet_xray_fixed.pth"
-    echo "File size: $(ls -lh /app/data/models/densenet_xray_fixed.pth | awk '{print $5}')"
-  elif [ -f "/app/data/models/densenet_xray.pth" ]; then
-    echo "Model weights already exist at /app/data/models/densenet_xray.pth"
-    echo "File size: $(ls -lh /app/data/models/densenet_xray.pth | awk '{print $5}')"
-    
-    # Fix the model for our architecture if not already fixed
-    if [ ! -f "/app/data/models/densenet_xray_fixed.pth" ]; then
-      echo "Fixing model architecture..."
-      python -c "
-try:
-    import torch.serialization
-    from torch.serialization import add_safe_globals
-    import torch.nn.modules.container
-    add_safe_globals([torch.nn.modules.container.Sequential])
-    from api.utils.model_fix import fix_densenet_model
-    fix_densenet_model()
-    print('Model fixed successfully')
-except Exception as e:
-    print(f'Error fixing model: {e}')
-"
+    echo "Waiting for $service_name to be ready..."
+    while ! nc -z $host $port; do
+        if [ $attempt -eq $max_attempts ]; then
+            echo "ERROR: $service_name not ready after $max_attempts attempts"
+            exit 1
+        fi
+        echo "Attempt $attempt/$max_attempts: $service_name not ready, waiting..."
+        sleep 3  # Longer wait for production
+        attempt=$((attempt + 1))
+    done
+    echo "$service_name is ready!"
+}
+
+# Wait for Redis first (all services need it)
+wait_for_service redis 6379 "Redis"
+
+# Only download model for web service or if explicitly needed
+if [ "$SERVICE_NAME" = "web" ] || [ "$INITIALIZE_XRAY_MODEL" = "True" ]; then
+    echo "Checking for DenseNet121 model weights..."
+    if [ ! -f "/app/data/models/densenet_xray.pth" ] && [ ! -f "/app/data/models/densenet_xray_fixed.pth" ]; then
+        echo "Downloading DenseNet121 model weights..."
+        for i in {1..5}; do  # More attempts in production
+            echo "Attempt $i to download model weights..."
+            if timeout 300 python -m api.utils.download_model; then  # 5 minute timeout
+                echo "Model weights downloaded successfully!"
+                break
+            else
+                echo "Download failed, retrying..."
+                sleep 30  # Longer wait between retries
+            fi
+        done
+        
+        if [ ! -f "/app/data/models/densenet_xray.pth" ]; then
+            echo "Warning: Failed to download model weights after multiple attempts."
+            touch /app/data/models/densenet_xray.pth.failed
+        fi
+    else
+        echo "Model weights already exist"
     fi
-  fi
+    
+    # Fix model if needed
+    if [ -f "/app/data/models/densenet_xray.pth" ] && [ ! -f "/app/data/models/densenet_xray_fixed.pth" ]; then
+        echo "Fixing model architecture..."
+        timeout 120 python -c "
+try:
+    from api.utils.model_fix import fix_densenet_model
+    fix_densenet_model()
+    print('Model fixed successfully')
+except Exception as e:
+    print(f'Error fixing model: {e}')
+" || echo "Model fix failed, continuing..."
+    fi
 fi
 
-# Apply database migrations only if this service should migrate
+# Apply database migrations only for web service
 if [ "$SHOULD_MIGRATE" = "true" ]; then
-  echo "Applying database migrations..."
-  python manage.py migrate
-else
-  echo "Skipping database migrations for this service..."
-fi
-
-# Create superuser if needed
-echo "Creating superuser if needed..."
-
-if [ "$DJANGO_SUPERUSER_USERNAME" ] && [ "$DJANGO_SUPERUSER_EMAIL" ] && [ "$DJANGO_SUPERUSER_PASSWORD" ]; then
-  python manage.py shell -c "
+    echo "Applying database migrations..."
+    python manage.py migrate --noinput
+    
+    # Create superuser only once
+    echo "Creating superuser if needed..."
+    if [ "$DJANGO_SUPERUSER_USERNAME" ] && [ "$DJANGO_SUPERUSER_EMAIL" ] && [ "$DJANGO_SUPERUSER_PASSWORD" ]; then
+        timeout 60 python manage.py shell -c "
 from django.contrib.auth import get_user_model
 User = get_user_model()
 try:
@@ -87,32 +86,75 @@ try:
         print('Superuser already exists')
 except Exception as e:
     print(f'Error creating superuser: {e}')
-"
+" || echo "Superuser creation failed, continuing..."
+    fi
+    
+    # Collect static files
+    echo "Collecting static files..."
+    python manage.py collectstatic --noinput --clear
+    
+    # Run health check
+    echo "Running initial health check..."
+    timeout 120 python manage.py shell -c "
+try:
+    from api.AI.ai_healthcheck import startup_health_check
+    result = startup_health_check()
+    print('Health check completed successfully')
+except Exception as e:
+    print(f'Health check failed: {e}')
+" || echo "Health check failed, continuing..."
+    
+else
+    echo "Skipping database migrations for this service..."
 fi
 
-# Collect static files
-echo "Collecting static files..."
-python manage.py collectstatic --no-input
+# For non-web services, wait for web service to be ready
+if [ "$SERVICE_NAME" != "web" ]; then
+    echo "Waiting for web service to be ready..."
+    max_attempts=120  # Longer wait in production
+    attempt=1
+    while ! curl -f http://web:8000/api/health/ >/dev/null 2>&1; do
+        if [ $attempt -eq $max_attempts ]; then
+            echo "WARNING: Web service not ready after $max_attempts attempts, continuing anyway..."
+            break
+        fi
+        echo "Attempt $attempt/$max_attempts: Web service not ready, waiting..."
+        sleep 5
+        attempt=$((attempt + 1))
+    done
+    echo "Web service is ready (or timeout reached)!"
+fi
 
 # Create necessary directories
-mkdir -p /app/media/profile_pics
-mkdir -p /app/media/xrays
-mkdir -p /app/data/models
-mkdir -p /app/prometheus
+mkdir -p /app/media/profile_pics /app/media/xrays /app/data/models /app/prometheus
 
 # Create Prometheus config if it doesn't exist
 if [ ! -f /app/prometheus/prometheus.yml ]; then
-  echo "Creating Prometheus config..."
-  cat > /app/prometheus/prometheus.yml << EOC
+    echo "Creating Prometheus config..."
+    cat > /app/prometheus/prometheus.yml << EOC
 global:
   scrape_interval: 15s
   evaluation_interval: 15s
+  external_labels:
+    environment: 'production'
+    cluster: 'praxia-prod'
+
+rule_files:
+  - "alert_rules.yml"
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+          - alertmanager:9093
 
 scrape_configs:
-  - job_name: 'praxia'
-    scrape_interval: 5s
+  - job_name: 'praxia-web'
+    scrape_interval: 10s
     static_configs:
       - targets: ['web:8000']
+    metrics_path: '/metrics'
+    scrape_timeout: 10s
 
   - job_name: 'node-exporter'
     static_configs:
@@ -125,29 +167,17 @@ scrape_configs:
   - job_name: 'redis'
     static_configs:
       - targets: ['redis-exporter:9121']
+
+  - job_name: 'postgres'
+    static_configs:
+      - targets: ['postgres-exporter:9187']
 EOC
 fi
 
-# Run health check
-echo "Running initial health check..."
-python manage.py shell -c "
-try:
-    from api.AI.ai_healthcheck import startup_health_check
-    startup_health_check()
-    print('Health check completed successfully')
-except Exception as e:
-    print(f'Health check failed: {e}')
-" || echo "Health check failed, continuing..."
-
-# Celery Tasks
-echo "Waiting for Redis to be ready..."
-while ! nc -z redis 6379; do
-  sleep 0.1
-done
-echo "Redis is ready!"
-
-# Clear any existing Celery queues
-python -c "
+# Clear Celery queues for celery services
+if [[ "$SERVICE_NAME" == celery* ]]; then
+    echo "Clearing Celery broker database..."
+    timeout 30 python -c "
 import redis
 try:
     r = redis.Redis(host='redis', port=6379, db=1)
@@ -155,8 +185,47 @@ try:
     print('Cleared Celery broker database')
 except Exception as e:
     print(f'Could not clear Celery database: {e}')
-"
+" || echo "Failed to clear Celery database, continuing..."
+fi
 
-# Start server with Daphne
-echo "Starting Daphne server..."
-exec daphne -b 0.0.0.0 -p 8000 praxia_backend.asgi:application
+# Production-specific optimizations
+echo "Applying production optimizations..."
+
+# Set Python optimizations
+export PYTHONOPTIMIZE=2
+export PYTHONDONTWRITEBYTECODE=1
+
+# Set memory limits for Python
+export MALLOC_ARENA_MAX=2
+
+# Warm up the application for web service
+if [ "$SERVICE_NAME" = "web" ]; then
+    echo "Warming up application..."
+    timeout 60 python -c "
+try:
+    import django
+    django.setup()
+    from api.AI.praxia_model import PraxiaAI
+    # Initialize AI model to warm up
+    praxia = PraxiaAI()
+    print('Application warmed up successfully')
+except Exception as e:
+    print(f'Warmup failed: {e}')
+" || echo "Application warmup failed, continuing..."
+fi
+
+echo "=== Starting Daphne server for ${SERVICE_NAME:-unknown} (PRODUCTION) ==="
+
+# Production server configuration
+if [ "$SERVICE_NAME" = "web" ]; then
+    # Use Daphne with production settings
+    exec daphne -b 0.0.0.0 -p 8000 \
+        --proxy-headers \
+        --access-log /app/logs/access.log \
+        --application-close-timeout 60 \
+        --websocket_timeout 86400 \
+        praxia_backend.asgi:application
+else
+    # For other services, use standard Daphne
+    exec daphne -b 0.0.0.0 -p 8000 praxia_backend.asgi:application
+fi

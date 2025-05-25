@@ -129,7 +129,6 @@ class ChatMessageView(APIView):
                 logger.warning("Error getting user profile", error=str(e))
                 user_profile = {}
         
-            # IMPROVED: Process with circuit breaker and timeout
             ai_response = None
         
             try:
@@ -281,6 +280,20 @@ class ChatMessageView(APIView):
             }
         
         return response
+
+    def _update_session_title(self, session, ai_response, message_content):
+        """Update session title if it's still 'New Chat'"""
+        try:
+            if session.title == "New Chat" and message_content:
+                # Extract a meaningful title from the message
+                title_words = message_content.split()[:5]  # First 5 words
+                new_title = ' '.join(title_words)
+                if len(new_title) > 50:
+                    new_title = new_title[:50] + "..."
+                session.title = new_title
+                session.save()
+        except Exception as e:
+            logger.warning("Failed to update session title", error=str(e))
 
 class MedicalConsultationView(APIView):
     """View for medical consultations"""

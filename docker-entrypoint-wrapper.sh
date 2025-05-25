@@ -4,16 +4,24 @@
 if [ "$SERVICE_NAME" = "web" ]; then
     # Only web service should run migrations
     SHOULD_MIGRATE=true
+    echo "Web service: Will handle migrations"
     sleep 2
 elif [ "$SERVICE_NAME" = "celery" ]; then
     SHOULD_MIGRATE=false
-    sleep 10
+    echo "Celery service: Waiting for web service to be ready"
+    sleep 20  # Increased wait time
 elif [ "$SERVICE_NAME" = "celery-beat" ]; then
     SHOULD_MIGRATE=false
-    sleep 15
+    echo "Celery-beat service: Waiting for web service to be ready"
+    sleep 25  # Increased wait time
+elif [ "$SERVICE_NAME" = "celery-monitor" ]; then
+    SHOULD_MIGRATE=false
+    echo "Celery-monitor service: Waiting for web service to be ready"
+    sleep 30  # Increased wait time
 else
     # Default for any other service
     SHOULD_MIGRATE=false
+    echo "Other service: Skipping migrations"
     sleep 5
 fi
 
@@ -25,16 +33,14 @@ export BASE_DIR=/app
 # Check if ENVIRONMENT variable is set to 'production'
 if [ "$ENVIRONMENT" = "production" ]; then
     echo "Running in production mode with entrypoint.prod.sh and .env.prod"
-    # Use a safer method to export variables
     set -a
-    source /app/.env.prod
+    source /app/.env.prod 2>/dev/null || echo "Warning: .env.prod not found"
     set +a
     exec /app/entrypoint.prod.sh "$@"
 else
     echo "Running in development mode with entrypoint.sh and .env"
-    # Use a safer method to export variables
     set -a
-    source /app/.env
+    source /app/.env 2>/dev/null || echo "Warning: .env not found"
     set +a
     exec /app/entrypoint.sh "$@"
 fi
