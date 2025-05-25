@@ -1,11 +1,9 @@
 from rest_framework import status, permissions
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from rest_framework.authtoken.models import Token
 from django.contrib.auth import authenticate
 from django.contrib.auth.models import User
 from django.utils import timezone
-from django.shortcuts import get_object_or_404
 from ..serializers import (
     RegisterSerializer, 
     LoginSerializer, 
@@ -13,16 +11,26 @@ from ..serializers import (
     PasswordResetRequestSerializer,
     PasswordResetConfirmSerializer
 )
-from ..models import EmailVerificationToken, PasswordResetToken, UserEmailStatus
+from ..models import EmailVerificationToken, PasswordResetToken, UserEmailStatus, UserSession
 from ..utils.mail_service import (
     send_verification_email,
     send_password_reset_email,
     send_password_changed_email
 )
+from ..utils.jwt_utils import JWTManager
+from ..authentication import SessionJWTAuthentication
 import structlog
 import traceback
 
 logger = structlog.get_logger(__name__)
+
+def get_client_info(request):
+    """Extract client information from request"""
+    return {
+        'ip_address': request.META.get('REMOTE_ADDR'),
+        'user_agent': request.META.get('HTTP_USER_AGENT', ''),
+        'device_info': request.META.get('HTTP_X_DEVICE_INFO', '')
+    }
 
 class RegisterView(APIView):
     """View for user registration"""
@@ -93,14 +101,24 @@ class EmailVerificationView(APIView):
                 email_status.verified_at = timezone.now()
                 email_status.save()
                 
-                # Create auth token for automatic login
-                token, created = Token.objects.get_or_create(user=user)
+                # Generate JWT tokens
+                access_token, refresh_token = JWTManager.generate_tokens(user)
+                
+                # Create session
+                client_info = get_client_info(request)
+                session = UserSession.objects.create(
+                    user=user,
+                    jwt_token=access_token,
+                    **client_info
+                )
                 
                 logger.info("Email verified successfully", user_id=user.id, email=user.email)
                 
                 return Response({
                     'message': 'Email verified successfully.',
-                    'token': token.key,
+                    'access_token': access_token,
+                    'refresh_token': refresh_token,
+                    'session_key': session.session_key,
                     'user_id': user.pk,
                     'email': user.email
                 })
@@ -185,6 +203,7 @@ class LoginView(APIView):
             
             # Check if 2FA is enabled
             try:
+                from ..models import UserTOTP
                 totp = UserTOTP.objects.get(user=user, is_verified=True)
                 
                 # If 2FA is enabled, verify token
@@ -205,29 +224,117 @@ class LoginView(APIView):
                 # 2FA not enabled, continue with normal login
                 pass
             
-            # Create or get token
-            token, created = Token.objects.get_or_create(user=user)
+            # Generate JWT tokens
+            access_token, refresh_token = JWTManager.generate_tokens(user)
+            
+            # Create session
+            client_info = get_client_info(request)
+            session = UserSession.objects.create(
+                user=user,
+                jwt_token=access_token,
+                **client_info
+            )
+            
+            # Check if user has 2FA enabled
+            has_2fa = UserTOTP.objects.filter(user=user, is_verified=True).exists()
+            
             return Response({
-                'token': token.key,
+                'access_token': access_token,
+                'refresh_token': refresh_token,
+                'session_key': session.session_key,
                 'user_id': user.pk,
                 'email': user.email,
                 'email_verified': True,
-                'has_2fa': UserTOTP.objects.filter(user=user, is_verified=True).exists()
+                'has_2fa': has_2fa
             })
             
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 class LogoutView(APIView):
     """View for user logout"""
+    authentication_classes = [SessionJWTAuthentication]
     permission_classes = [permissions.IsAuthenticated]
     
     def post(self, request):
         try:
-            # Delete the user's token to logout
-            request.user.custom_auth_token.delete()
+            session_key = request.headers.get('X-Session-Key')
+            if session_key:
+                # Deactivate the specific session
+                UserSession.objects.filter(
+                    user=request.user,
+                    session_key=session_key
+                ).update(is_active=False)
+            else:
+                # Deactivate all user sessions
+                UserSession.objects.filter(user=request.user).update(is_active=False)
+            
             return Response({'message': 'Successfully logged out'}, status=status.HTTP_200_OK)
         except Exception as e:
             return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+class LogoutAllView(APIView):
+    """View for logging out from all devices"""
+    authentication_classes = [SessionJWTAuthentication]
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def post(self, request):
+        try:
+            # Deactivate all user sessions
+            UserSession.objects.filter(user=request.user).update(is_active=False)
+            return Response({'message': 'Successfully logged out from all devices'}, status=status.HTTP_200_OK)
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+class RefreshTokenView(APIView):
+    """View for refreshing access token"""
+    permission_classes = [permissions.AllowAny]
+    
+    def post(self, request):
+        refresh_token = request.data.get('refresh_token')
+        session_key = request.data.get('session_key')
+        
+        if not refresh_token or not session_key:
+            return Response({
+                'error': 'Refresh token and session key are required'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Verify refresh token
+        payload = JWTManager.verify_token(refresh_token, 'refresh')
+        if not payload:
+            return Response({
+                'error': 'Invalid or expired refresh token'
+            }, status=status.HTTP_401_UNAUTHORIZED)
+        
+        try:
+            # Verify session exists and is valid
+            session = UserSession.objects.get(
+                session_key=session_key,
+                user_id=payload['user_id'],
+                is_active=True
+            )
+            
+            if not session.is_valid():
+                return Response({
+                    'error': 'Session expired'
+                }, status=status.HTTP_401_UNAUTHORIZED)
+            
+            # Generate new access token
+            user = session.user
+            new_access_token, _ = JWTManager.generate_tokens(user)
+            
+            # Update session with new token
+            session.jwt_token = new_access_token
+            session.refresh()
+            
+            return Response({
+                'access_token': new_access_token,
+                'session_key': session.session_key
+            })
+            
+        except UserSession.DoesNotExist:
+            return Response({
+                'error': 'Invalid session'
+            }, status=status.HTTP_401_UNAUTHORIZED)
 
 class PasswordResetRequestView(APIView):
     """View for requesting password reset"""
@@ -287,17 +394,30 @@ class PasswordResetConfirmView(APIView):
                 user.set_password(password)
                 user.save()
                 
+                # Invalidate all existing sessions for security
+                UserSession.objects.filter(user=user).update(is_active=False)
+                
                 # Send password changed confirmation email
                 send_password_changed_email(user)
                 
-                # Create auth token for automatic login
-                token, created = Token.objects.get_or_create(user=user)
+                # Generate new JWT tokens and session
+                access_token, refresh_token = JWTManager.generate_tokens(user)
+                
+                # Create new session
+                client_info = get_client_info(request)
+                session = UserSession.objects.create(
+                    user=user,
+                    jwt_token=access_token,
+                    **client_info
+                )
                 
                 logger.info("Password reset successfully", user_id=user.id, email=user.email)
                 
                 return Response({
                     'message': 'Password has been reset successfully.',
-                    'token': token.key,
+                    'access_token': access_token,
+                    'refresh_token': refresh_token,
+                    'session_key': session.session_key,
                     'user_id': user.pk,
                     'email': user.email
                 })
@@ -335,12 +455,14 @@ class CheckEmailVerificationStatusView(APIView):
                 'error': 'User with this email does not exist.'
             }, status=status.HTTP_404_NOT_FOUND)
 
+# 2FA Views
 import pyotp
 from ..models import UserTOTP
 from ..serializers import TOTPSetupSerializer, TOTPVerifySerializer
 
 class TOTPSetupView(APIView):
     """View for setting up 2FA"""
+    authentication_classes = [SessionJWTAuthentication]
     permission_classes = [permissions.IsAuthenticated]
     
     def get(self, request):
@@ -367,6 +489,7 @@ class TOTPSetupView(APIView):
 
 class TOTPVerifyView(APIView):
     """View for verifying 2FA setup"""
+    authentication_classes = [SessionJWTAuthentication]
     permission_classes = [permissions.IsAuthenticated]
     
     def post(self, request):
@@ -400,6 +523,7 @@ class TOTPVerifyView(APIView):
 
 class TOTPDisableView(APIView):
     """View for disabling 2FA"""
+    authentication_classes = [SessionJWTAuthentication]
     permission_classes = [permissions.IsAuthenticated]
     
     def post(self, request):
@@ -413,4 +537,57 @@ class TOTPDisableView(APIView):
         except UserTOTP.DoesNotExist:
             return Response({
                 'error': '2FA is not enabled for this account.'
+            }, status=status.HTTP_404_NOT_FOUND)
+
+class UserSessionsView(APIView):
+    """View for managing user sessions"""
+    authentication_classes = [SessionJWTAuthentication]
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def get(self, request):
+        """Get all active sessions for the user"""
+        sessions = UserSession.objects.filter(
+            user=request.user,
+            is_active=True
+        ).order_by('-last_activity')
+        
+        session_data = []
+        current_session_key = request.headers.get('X-Session-Key')
+        
+        for session in sessions:
+            session_data.append({
+                'session_key': session.session_key,
+                'device_info': session.device_info,
+                'ip_address': session.ip_address,
+                'user_agent': session.user_agent,
+                'created_at': session.created_at,
+                'last_activity': session.last_activity,
+                'is_current': session.session_key == current_session_key
+            })
+        
+        return Response({'sessions': session_data})
+    
+    def delete(self, request):
+        """Terminate a specific session"""
+        session_key = request.data.get('session_key')
+        if not session_key:
+            return Response({
+                'error': 'Session key is required'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            session = UserSession.objects.get(
+                user=request.user,
+                session_key=session_key,
+                is_active=True
+            )
+            session.is_active = False
+            session.save()
+            
+            return Response({
+                'message': 'Session terminated successfully'
+            })
+        except UserSession.DoesNotExist:
+            return Response({
+                'error': 'Session not found'
             }, status=status.HTTP_404_NOT_FOUND)

@@ -10,6 +10,44 @@ import qrcode
 import base64
 import io
 from django.conf import settings
+import secrets
+
+class UserSession(models.Model):
+    """Session model for tracking user sessions"""
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='sessions')
+    session_key = models.CharField(max_length=255, unique=True)
+    jwt_token = models.TextField()  # Store the JWT token
+    device_info = models.CharField(max_length=255, blank=True)
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    user_agent = models.TextField(blank=True)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    last_activity = models.DateTimeField(auto_now=True)
+    expires_at = models.DateTimeField()
+    
+    class Meta:
+        ordering = ['-last_activity']
+    
+    def save(self, *args, **kwargs):
+        if not self.session_key:
+            self.session_key = secrets.token_urlsafe(32)
+        if not self.expires_at:
+            # Set session to expire in 7 days
+            self.expires_at = timezone.now() + timedelta(days=7)
+        super().save(*args, **kwargs)
+    
+    def is_valid(self):
+        """Check if session is valid (not expired and active)"""
+        return self.is_active and timezone.now() < self.expires_at
+    
+    def refresh(self):
+        """Refresh session expiry"""
+        self.expires_at = timezone.now() + timedelta(days=7)
+        self.last_activity = timezone.now()
+        self.save()
+    
+    def __str__(self):
+        return f"Session for {self.user.username} - {self.session_key[:8]}..."
 
 class UserToken(models.Model):
     """Custom token model for user authentication"""

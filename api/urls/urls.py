@@ -4,6 +4,8 @@ from ..views import (
     RegisterView, 
     LoginView, 
     LogoutView,
+    LogoutAllView,
+    RefreshTokenView,
     EmailVerificationView,
     ResendVerificationEmailView,
     PasswordResetRequestView,
@@ -22,7 +24,8 @@ from ..views import (
     TOTPSetupView,
     TOTPVerifyView,
     AuthenticatedHealthCheckView,
-    XRayAnalysisDetailView
+    XRayAnalysisDetailView,
+    UserSessionsView
 )
 
 # Create a router for ViewSets
@@ -40,6 +43,8 @@ urlpatterns = [
         path('register/', RegisterView.as_view(), name='register'),
         path('login/', LoginView.as_view(), name='login'),
         path('logout/', LogoutView.as_view(), name='logout'),
+        path('logout-all/', LogoutAllView.as_view(), name='logout-all'),
+        path('refresh-token/', RefreshTokenView.as_view(), name='refresh-token'),
         path('verify_email/', EmailVerificationView.as_view(), name='verify-email'),
         path('resend-verification-email/', ResendVerificationEmailView.as_view(), name='resend-verification-email'),
         path('password-reset-request/', PasswordResetRequestView.as_view(), name='password-reset-request'),
@@ -48,6 +53,7 @@ urlpatterns = [
         path('2fa/setup/', TOTPSetupView.as_view(), name='2fa-setup'),
         path('2fa/verify/', TOTPVerifyView.as_view(), name='2fa-verify'),
         path('2fa/disable/', TOTPDisableView.as_view(), name='2fa-disable'),
+        path('sessions/', UserSessionsView.as_view(), name='user-sessions'),
     ])),
     
     # User profile URLs

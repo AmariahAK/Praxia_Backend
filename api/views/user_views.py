@@ -5,9 +5,11 @@ from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from django.shortcuts import get_object_or_404
 from ..models import UserProfile
 from ..serializers.user_serializer import UserProfileSerializer, UserProfileUpdateSerializer
+from ..authentication import SessionJWTAuthentication
 
 class UserProfileView(APIView):
     """View for retrieving and updating user profile"""
+    authentication_classes = [SessionJWTAuthentication]
     permission_classes = [permissions.IsAuthenticated]
     parser_classes = [MultiPartParser, FormParser, JSONParser]
     
@@ -30,6 +32,7 @@ class UserProfileView(APIView):
 
 class ConfirmGenderView(APIView):
     """View for confirming and locking gender"""
+    authentication_classes = [SessionJWTAuthentication]
     permission_classes = [permissions.IsAuthenticated]
     
     def post(self, request):

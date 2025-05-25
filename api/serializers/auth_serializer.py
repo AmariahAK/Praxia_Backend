@@ -81,6 +81,11 @@ class PasswordResetConfirmSerializer(serializers.Serializer):
             raise serializers.ValidationError({"password": "Password fields didn't match."})
         return attrs
 
+class RefreshTokenSerializer(serializers.Serializer):
+    """Serializer for token refresh"""
+    refresh_token = serializers.CharField(required=True)
+    session_key = serializers.CharField(required=True)
+
 # Add to existing auth_serializer.py file
 import pyotp
 from ..models import UserTOTP
@@ -106,3 +111,13 @@ class TOTPLoginSerializer(serializers.Serializer):
     email = serializers.EmailField(required=True)
     password = serializers.CharField(required=True)
     token = serializers.CharField(max_length=6, min_length=6, required=False)
+
+class UserSessionSerializer(serializers.Serializer):
+    """Serializer for user session data"""
+    session_key = serializers.CharField()
+    device_info = serializers.CharField()
+    ip_address = serializers.IPAddressField()
+    user_agent = serializers.CharField()
+    created_at = serializers.DateTimeField()
+    last_activity = serializers.DateTimeField()
+    is_current = serializers.BooleanField()
