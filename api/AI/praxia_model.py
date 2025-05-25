@@ -1074,19 +1074,36 @@ Your response must be valid JSON that can be parsed programmatically.
     def _get_health_news_from_rss(self, source='all', limit=3):
         """Get health news from RSS feeds"""
         articles = []
-        
+    
         rss_sources = {
             'who': 'https://www.who.int/rss-feeds/news-english.xml',
             'cdc': 'https://tools.cdc.gov/api/v2/resources/media/316422.rss',
-            'mayo': 'https://newsnetwork.mayoclinic.org/feed/',
+            'mayo': 'https://newsnetwork.mayoclinic.org/category/health-tips/feed/',
         }
-        
+    
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'application/rss+xml, application/xml, text/xml',
+            'Accept-Language': 'en-US,en;q=0.9',
+            'Cache-Control': 'no-cache',
+            'Pragma': 'no-cache'
+        }
+    
         sources_to_try = [source] if source != 'all' else list(rss_sources.keys())
-        
+    
         for src in sources_to_try:
             if src in rss_sources:
                 try:
-                    feed = feedparser.parse(rss_sources[src])
+                    # Use requests with proper headers first, then feedparser
+                    response = requests.get(rss_sources[src], headers=headers, timeout=15)
+                    response.raise_for_status()
+                    
+                    feed = feedparser.parse(response.content)
+                    
+                    # Check if feed is valid
+                    if hasattr(feed, 'bozo') and feed.bozo:
+                        logger.warning(f"RSS feed parsing issues for {src}: {feed.bozo_exception}")
+                    
                     for entry in feed.entries[:limit]:
                         articles.append({
                             'title': entry.get('title', 'Health News'),
@@ -1100,7 +1117,7 @@ Your response must be valid JSON that can be parsed programmatically.
                 except Exception as e:
                     logger.warning(f"RSS feed failed for {src}", error=str(e))
                     continue
-        
+    
         return articles
 
     def _get_health_news_from_apis(self, limit=3):

@@ -11,28 +11,28 @@ logger = structlog.get_logger(__name__)
 # Create circuit breakers for different external services
 who_breaker = pybreaker.CircuitBreaker(
     fail_max=5,
-    reset_timeout=60,
+    reset_timeout=60,  
     exclude=[ValueError, TypeError],
     name='who_api'
 )
 
 mayo_breaker = pybreaker.CircuitBreaker(
     fail_max=5,
-    reset_timeout=60,
+    reset_timeout=60, 
     exclude=[ValueError, TypeError],
     name='mayo_api'
 )
 
+# Fixed: Use only valid parameters for pybreaker
 together_ai_breaker = pybreaker.CircuitBreaker(
     fail_max=2,  
-    reset_timeout=30,
-    expected_exception=Exception,
+    reset_timeout=30,  
     name='together_ai'
 )
 
 pubmed_breaker = pybreaker.CircuitBreaker(
     fail_max=5,
-    reset_timeout=60,
+    reset_timeout=60,  
     exclude=[ValueError, TypeError],
     name='pubmed_api'
 )
