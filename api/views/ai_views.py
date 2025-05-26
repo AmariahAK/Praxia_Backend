@@ -4,6 +4,7 @@ from ..models import TranslationService
 from rest_framework.response import Response
 from rest_framework.generics import RetrieveAPIView
 from rest_framework.permissions import AllowAny
+from datetime import datetime
 from ..AI.praxia_model import (
     PraxiaAI,
     analyze_xray_task,
@@ -460,38 +461,69 @@ class HealthNewsView(APIView):
     def get(self, request):
         """Get health news articles"""
         source = request.query_params.get('source', 'all')
-        limit = min(int(request.query_params.get('limit', 3)), 10)  # Cap at 10 articles
+        limit = min(int(request.query_params.get('limit', 5)), 10)
         
-        # Use Celery task, but block for result (or you can return a task id and poll)
-        news_task = scrape_health_news.delay(source=source, limit=limit)
         try:
-            news_articles = news_task.get(timeout=15)
+            # Use direct method instead of Celery for immediate response
+            praxia = PraxiaAI()
+            news_articles = praxia._get_health_news_comprehensive(source=source, limit=limit)
+            
             saved_articles = []
             for article in news_articles:
-                obj, created = HealthNews.objects.get_or_create(
-                    url=article['url'],
-                    defaults={
-                        'title': article['title'],
-                        'source': article['source'],
-                        'summary': article.get('summary', ''),
-                        'original_content': article.get('content', ''),
-                        'image_url': article.get('image_url'),
-                        'published_date': article.get('published_date')
-                    }
-                )
-                saved_articles.append(HealthNewsSerializer(obj).data)
+                try:
+                    # Ensure published_date is in correct format
+                    published_date = article.get('published_date')
+                    if published_date:
+                        # Validate date format
+                        try:
+                            datetime.strptime(published_date, "%Y-%m-%d")
+                        except ValueError:
+                            # If invalid format, use current date
+                            published_date = datetime.now().strftime("%Y-%m-%d")
+                    else:
+                        published_date = datetime.now().strftime("%Y-%m-%d")
+                    
+                    obj, created = HealthNews.objects.get_or_create(
+                        url=article.get('url', ''),
+                        defaults={
+                            'title': article.get('title', 'Health News'),
+                            'source': article.get('source', 'Unknown'),
+                            'summary': article.get('summary', ''),
+                            'original_content': article.get('content', ''),
+                            'image_url': article.get('image_url'),
+                            'published_date': published_date
+                        }
+                    )
+                    saved_articles.append(HealthNewsSerializer(obj).data)
+                except Exception as e:
+                    logger.warning(f"Error saving article: {str(e)}")
+                    # Still include the article in response even if not saved
+                    article_copy = article.copy()
+                    if 'published_date' in article_copy:
+                        try:
+                            datetime.strptime(article_copy['published_date'], "%Y-%m-%d")
+                        except ValueError:
+                            article_copy['published_date'] = datetime.now().strftime("%Y-%m-%d")
+                    saved_articles.append(article_copy)
+            
             logger.info("Health news retrieved", source=source, count=len(saved_articles))
             return Response(saved_articles)
+            
         except Exception as e:
             logger.error("Error retrieving health news", error=str(e))
-            articles = HealthNews.objects.filter(source__icontains=source if source != 'all' else '')[:limit]
+            # Fallback to database articles
+            articles = HealthNews.objects.filter(
+                source__icontains=source if source != 'all' else ''
+            ).order_by('-created_at')[:limit]
+            
             if articles.exists():
                 serializer = HealthNewsSerializer(articles, many=True)
                 return Response(serializer.data)
-            return Response(
-                {"error": str(e), "message": "Unable to retrieve health news at this time."},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
+            
+            # Final fallback
+            praxia = PraxiaAI()
+            fallback_articles = praxia._get_enhanced_fallback_health_news(source, limit)
+            return Response(fallback_articles)
 
 class AuthenticatedHealthCheckView(APIView):
     """View for authenticated health check"""

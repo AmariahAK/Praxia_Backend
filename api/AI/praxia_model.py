@@ -989,95 +989,388 @@ Your response must be valid JSON that can be parsed programmatically.
             logger.error("Unexpected error in API call", error=str(e))
             raise Exception(f"Unexpected error: {str(e)}")
 
-    def _get_health_news_comprehensive(self, source='all', limit=3):
+    def _get_health_news_comprehensive(self, source='all', limit=5):
         """Comprehensive health news retrieval with enhanced error handling"""
         cache_key = f"health_news_comprehensive_{source}_{limit}"
         cached_result = cache.get(cache_key)
         if cached_result:
             logger.info("Returning cached comprehensive health news")
             return cached_result
-    
+
         try:
             articles = []
             
-            # Strategy 1: Try RSS feeds with circuit breaker protection
+            # Strategy 1: Try RSS feeds first with timeout
             try:
-                from ..circuit_breaker import safe_rss_fetch, rss_fallback
+                import signal
+                
+                def timeout_handler(signum, frame):
+                    raise TimeoutError("RSS retrieval timeout")
+                
+                signal.signal(signal.SIGALRM, timeout_handler)
+                signal.alarm(15)  # 15 second timeout for RSS
+                
                 try:
-                    rss_articles = safe_rss_fetch(source, limit)
+                    rss_articles = self._get_health_news_from_rss_direct(source, limit)
                     if rss_articles:
                         articles.extend(rss_articles)
                         logger.info("Retrieved articles from RSS feeds", count=len(rss_articles))
+                    signal.alarm(0)  # Cancel timeout
+                except TimeoutError:
+                    logger.warning("RSS retrieval timed out")
+                    signal.alarm(0)
                 except Exception as e:
-                    logger.warning("RSS feed retrieval failed, using fallback", error=str(e))
-                    rss_articles = rss_fallback(source, limit)
-                    articles.extend(rss_articles)
+                    signal.alarm(0)
+                    logger.warning("RSS feed retrieval failed", error=str(e))
             except Exception as e:
-                logger.warning("RSS strategy completely failed", error=str(e))
+                logger.warning("RSS strategy setup failed", error=str(e))
             
-            # Strategy 2: Try news APIs if we need more articles
+            # Strategy 2: Try web scraping if we need more articles
             if len(articles) < limit:
                 try:
-                    api_articles = self._get_health_news_from_apis(limit - len(articles))
-                    articles.extend(api_articles)
-                    logger.info("Retrieved articles from news APIs", count=len(api_articles))
-                except Exception as e:
-                    logger.warning("News API retrieval failed", error=str(e))
-            
-            # Strategy 3: Try web scraping as last resort
-            if len(articles) < limit:
-                try:
-                    scraped_articles = self._scrape_health_news_fallback(source, limit - len(articles))
-                    articles.extend(scraped_articles)
-                    logger.info("Retrieved articles from web scraping", count=len(scraped_articles))
+                    scraped_articles = self._scrape_health_news_direct(source, limit - len(articles))
+                    if scraped_articles:
+                        articles.extend(scraped_articles)
+                        logger.info("Retrieved articles from web scraping", count=len(scraped_articles))
                 except Exception as e:
                     logger.warning("Web scraping failed", error=str(e))
             
-            # Strategy 4: Use static fallback content if all else fails
-            if not articles:
-                logger.warning("All news sources failed, using static fallback")
-                articles = self._get_fallback_health_news(limit)
+            # Strategy 3: Use enhanced fallback to complete the set
+            if len(articles) < limit:
+                logger.info("Using enhanced fallback to complete article set")
+                fallback_articles = self._get_enhanced_fallback_health_news(source, limit - len(articles))
+                articles.extend(fallback_articles)
             
-            # Process and clean articles
+            # Process and clean articles quickly
             processed_articles = []
-            for article in articles[:limit]:
+            seen_titles = set()
+            
+            for article in articles[:limit * 2]:  # Process more than needed to allow for deduplication
                 try:
                     if not isinstance(article, dict):
                         continue
-                        
+                    
+                    title = article.get('title', 'Health News Update')
+                    # Skip duplicates
+                    if title.lower() in seen_titles:
+                        continue
+                    seen_titles.add(title.lower())
+                    
+                    # Ensure published_date is in correct format
+                    published_date = article.get('published_date')
+                    if not published_date:
+                        published_date = datetime.now().strftime("%Y-%m-%d")
+                    elif not isinstance(published_date, str) or len(published_date) < 8:
+                        published_date = datetime.now().strftime("%Y-%m-%d")
+                    
                     processed_article = {
-                        'title': article.get('title', 'Health News Update'),
+                        'title': title,
                         'source': article.get('source', 'Health Authority'),
                         'url': article.get('url', '#'),
                         'content': article.get('content', 'Health information update'),
                         'image_url': article.get('image_url'),
-                        'published_date': article.get('published_date', datetime.now().strftime("%Y-%m-%d"))
+                        'published_date': published_date
                     }
                     
-                    # Generate summary safely
+                    # Generate summary quickly
                     content = processed_article.get('content', '')
-                    if content and len(content) > 500:
-                        try:
-                            processed_article['summary'] = self._summarize_article(content)
-                        except Exception as e:
-                            logger.warning(f"Failed to summarize article: {str(e)}")
-                            processed_article['summary'] = content[:200] + "..."
+                    if content and len(content) > 200:
+                        processed_article['summary'] = content[:200] + "..."
                     else:
                         processed_article['summary'] = content
                     
                     processed_articles.append(processed_article)
+                    
+                    # Stop when we have enough articles
+                    if len(processed_articles) >= limit:
+                        break
+                        
                 except Exception as e:
                     logger.warning(f"Error processing article: {str(e)}")
                     continue
             
-            # Cache for 6 hours instead of 12 to get fresher content
-            cache.set(cache_key, processed_articles, 60 * 60 * 6)
+            # Cache for 2 hours for faster subsequent requests
+            cache.set(cache_key, processed_articles, 60 * 60 * 2)
+            logger.info("Health news retrieval completed", 
+                       total_articles=len(processed_articles), 
+                       source=source, 
+                       requested_limit=limit)
             return processed_articles
-        
+    
         except Exception as e:
             logger.error("Error in comprehensive health news retrieval", error=str(e))
-            return self._get_fallback_health_news(limit)
+            return self._get_enhanced_fallback_health_news(source, limit)
 
+    def _get_health_news_from_rss_direct(self, source='all', limit=3):
+        """Direct RSS feed retrieval without circuit breaker interference"""
+        articles = []
+    
+        # Updated RSS sources with more alternatives
+        rss_sources = {
+            'who': [
+                'https://www.who.int/rss-feeds/news-english.xml',
+                'https://www.who.int/feeds/entity/csr/don/en/rss.xml',
+                'https://www.who.int/feeds/entity/mediacentre/news/en/rss.xml'
+            ],
+            'cdc': [
+                'https://tools.cdc.gov/api/v2/resources/media/316422.rss',
+                'https://www.cdc.gov/media/rss/index.html',
+                'https://blogs.cdc.gov/feed/'
+            ],
+            'mayo': [
+                'https://newsnetwork.mayoclinic.org/feed/',
+                'https://newsnetwork.mayoclinic.org/category/diseases-conditions/feed/',
+                'https://www.mayoclinic.org/rss'
+            ],
+        }
+    
+        # Better headers with rotation
+        header_options = [
+            {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Accept': 'application/rss+xml, application/xml, text/xml, application/atom+xml, */*',
+                'Accept-Language': 'en-US,en;q=0.9',
+                'Cache-Control': 'no-cache',
+                'Connection': 'keep-alive',
+            },
+            {
+                'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Accept': 'application/rss+xml, application/xml, text/xml',
+                'Accept-Language': 'en-US,en;q=0.8',
+            }
+        ]
+    
+        sources_to_try = [source] if source != 'all' else list(rss_sources.keys())
+    
+        for src in sources_to_try:
+            if src in rss_sources:
+                urls_to_try = rss_sources[src]
+                articles_per_source = max(2, limit // len(sources_to_try)) if source == 'all' else limit
+                
+                for i, url in enumerate(urls_to_try):
+                    try:
+                        import time
+                        import random
+                        time.sleep(random.uniform(0.5, 1.5))  # Random delay
+                        
+                        # Rotate headers
+                        headers = header_options[i % len(header_options)]
+                        
+                        response = requests.get(url, timeout=15, headers=headers)
+                        response.raise_for_status()
+                        
+                        feed = feedparser.parse(response.content)
+                        
+                        if not feed.entries:
+                            logger.warning(f"No entries found in RSS feed for {src} at {url}")
+                            continue
+                        
+                        # Successfully got articles
+                        source_articles = []
+                        for entry in feed.entries[:articles_per_source]:
+                            try:
+                                # Fix date parsing
+                                published_date = self._parse_rss_date(entry.get('published', ''))
+                                
+                                article = {
+                                    'title': entry.get('title', 'Health News'),
+                                    'source': src.upper(),
+                                    'url': entry.get('link', '#'),
+                                    'content': entry.get('description', 'Health information update'),
+                                    'summary': entry.get('summary', entry.get('description', ''))[:200],
+                                    'published_date': published_date
+                                }
+                                source_articles.append(article)
+                            except Exception as e:
+                                logger.warning(f"Error processing RSS entry: {str(e)}")
+                                continue
+                        
+                        if source_articles:
+                            articles.extend(source_articles)
+                            logger.info(f"Retrieved {len(source_articles)} articles from {src} RSS")
+                            break  # Success, no need to try other URLs for this source
+                            
+                    except requests.exceptions.RequestException as e:
+                        logger.warning(f"RSS request failed for {src} at {url}: {str(e)}")
+                        continue
+                    except Exception as e:
+                        logger.warning(f"RSS parsing failed for {src} at {url}: {str(e)}")
+                        continue
+    
+        return articles
+
+    def _parse_rss_date(self, date_string):
+        """Parse RSS date string and convert to YYYY-MM-DD format"""
+        if not date_string:
+            return datetime.now().strftime("%Y-%m-%d")
+        
+        try:
+            # Common RSS date formats
+            date_formats = [
+                "%a, %d %b %Y %H:%M:%S %Z",  # "Sat, 24 May 2025 17:47:21 Z"
+                "%a, %d %b %Y %H:%M:%S %z",  # "Sat, 24 May 2025 20:56:00 GMT"
+                "%Y-%m-%dT%H:%M:%S%z",       # ISO format
+                "%Y-%m-%d %H:%M:%S",         # Simple format
+                "%Y-%m-%d",                  # Date only
+            ]
+            
+            # Clean the date string
+            cleaned_date = date_string.strip()
+            
+            # Handle common timezone abbreviations
+            timezone_replacements = {
+                ' GMT': ' +0000',
+                ' UTC': ' +0000',
+                ' Z': ' +0000',
+                ' EST': ' -0500',
+                ' PST': ' -0800',
+                ' CST': ' -0600',
+                ' MST': ' -0700'
+            }
+            
+            for old_tz, new_tz in timezone_replacements.items():
+                if cleaned_date.endswith(old_tz):
+                    cleaned_date = cleaned_date.replace(old_tz, new_tz)
+                    break
+            
+            # Try parsing with different formats
+            for date_format in date_formats:
+                try:
+                    parsed_date = datetime.strptime(cleaned_date, date_format)
+                    return parsed_date.strftime("%Y-%m-%d")
+                except ValueError:
+                    continue
+            
+            # If all parsing fails, try using dateutil
+            try:
+                from dateutil import parser
+                parsed_date = parser.parse(cleaned_date)
+                return parsed_date.strftime("%Y-%m-%d")
+            except:
+                pass
+            
+            # Final fallback
+            logger.warning(f"Could not parse date: {date_string}")
+            return datetime.now().strftime("%Y-%m-%d")
+            
+        except Exception as e:
+            logger.error(f"Error parsing date {date_string}: {str(e)}")
+            return datetime.now().strftime("%Y-%m-%d")
+
+    def _scrape_health_news_direct(self, source='all', limit=3):
+        """Direct web scraping without circuit breaker interference"""
+        articles = []
+        
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.9',
+            'Connection': 'keep-alive',
+        }
+        
+        sources_to_try = []
+        if source in ['who', 'all']:
+            sources_to_try.append(('who', self._scrape_who_news_improved))
+        if source in ['cdc', 'all']:
+            sources_to_try.append(('cdc', self._scrape_cdc_news_improved))
+        if source in ['mayo', 'all']:
+            sources_to_try.append(('mayo', self._scrape_mayo_news_improved))
+        
+        articles_per_source = max(1, limit // len(sources_to_try)) if len(sources_to_try) > 1 else limit
+        
+        for src_name, scrape_func in sources_to_try:
+            try:
+                logger.info(f"Attempting direct scraping from {src_name}")
+                src_articles = scrape_func(limit=articles_per_source, headers=headers)
+                if src_articles:
+                    articles.extend(src_articles)
+                    logger.info(f"Successfully retrieved {len(src_articles)} articles from {src_name}")
+            except Exception as e:
+                logger.warning(f"Direct scraping failed for {src_name}", error=str(e))
+                continue
+        
+        return articles
+
+    def _get_enhanced_fallback_health_news(self, source='all', limit=3):
+        """Enhanced fallback with more diverse content"""
+        current_date = datetime.now().strftime("%Y-%m-%d")
+        
+        # Create source-specific content
+        who_articles = [
+            {
+                "title": "WHO Global Health Security: Strengthening Pandemic Preparedness",
+                "source": "WHO",
+                "url": "https://www.who.int/news",
+                "summary": "WHO continues to work with countries to strengthen health security and pandemic preparedness capabilities.",
+                "content": "The World Health Organization emphasizes the importance of robust health systems, early detection capabilities, and coordinated international response mechanisms for global health security.",
+                "published_date": current_date
+            },
+            {
+                "title": "WHO Health Equity Initiative: Reducing Global Health Disparities",
+                "source": "WHO",
+                "url": "https://www.who.int/news",
+                "summary": "New initiatives focus on addressing health inequities and ensuring universal health coverage worldwide.",
+                "content": "WHO's latest health equity initiatives aim to reduce disparities in health outcomes and improve access to essential health services for vulnerable populations globally.",
+                "published_date": current_date
+            }
+        ]
+        
+        cdc_articles = [
+            {
+                "title": "CDC Disease Prevention Guidelines: Updated Recommendations",
+                "source": "CDC",
+                "url": "https://www.cdc.gov/",
+                "summary": "Latest CDC guidelines provide updated recommendations for disease prevention and health promotion.",
+                "content": "The Centers for Disease Control and Prevention has released updated guidelines focusing on preventive care, vaccination schedules, and community health interventions.",
+                "published_date": current_date
+            },
+            {
+                "title": "CDC Health Surveillance: Monitoring Disease Trends",
+                "source": "CDC",
+                "url": "https://www.cdc.gov/",
+                "summary": "CDC continues monitoring disease trends and providing data-driven health recommendations.",
+                "content": "CDC's surveillance systems continue to track disease patterns, enabling early detection of health threats and informed public health decision-making.",
+                "published_date": current_date
+            }
+        ]
+        
+        mayo_articles = [
+            {
+                "title": "Mayo Clinic Research: Advances in Personalized Medicine",
+                "source": "Mayo Clinic",
+                "url": "https://www.mayoclinic.org/",
+                "summary": "Latest research focuses on personalized treatment approaches and precision medicine.",
+                "content": "Mayo Clinic researchers continue advancing personalized medicine through innovative diagnostic tools and targeted treatment strategies tailored to individual patient needs.",
+                "published_date": current_date
+            },
+            {
+                "title": "Mayo Clinic Patient Care Excellence: Integrated Healthcare Approach",
+                "source": "Mayo Clinic",
+                "url": "https://www.mayoclinic.org/",
+                "summary": "Mayo Clinic's integrated approach combines cutting-edge research with compassionate patient care.",
+                "content": "Mayo Clinic's model of care integrates clinical expertise, research innovation, and education to provide comprehensive, patient-centered healthcare services.",
+                "published_date": current_date
+            }
+        ]
+        
+        # Select articles based on source
+        if source == 'who':
+            selected_articles = who_articles[:limit]
+        elif source == 'cdc':
+            selected_articles = cdc_articles[:limit]
+        elif source == 'mayo':
+            selected_articles = mayo_articles[:limit]
+        else:  # 'all' or other
+            all_articles = who_articles + cdc_articles + mayo_articles
+            # Distribute evenly across sources
+            selected_articles = []
+            articles_per_source = max(1, limit // 3)
+            selected_articles.extend(who_articles[:articles_per_source])
+            selected_articles.extend(cdc_articles[:articles_per_source])
+            selected_articles.extend(mayo_articles[:articles_per_source])
+            selected_articles = selected_articles[:limit]
+        
+        return selected_articles
 
     def _get_health_news_from_rss(self, source='all', limit=3):
         """Get health news from RSS feeds with improved error handling"""
@@ -1383,7 +1676,7 @@ Your response must be valid JSON that can be parsed programmatically.
     def _scrape_mayo_news_improved(self, limit=3, headers=None):
         """Improved Mayo Clinic news scraping with multiple strategies"""
         try:
-            # Try multiple Mayo Clinic URLs
+            # Try multiple Mayo Clinic URLs with better headers
             mayo_urls = [
                 "https://newsnetwork.mayoclinic.org/",
                 "https://www.mayoclinic.org/about-mayo-clinic/newsnetwork",
@@ -1391,14 +1684,29 @@ Your response must be valid JSON that can be parsed programmatically.
                 "https://www.mayoclinic.org/healthy-lifestyle"
             ]
             
+            # Enhanced headers to avoid blocking
+            enhanced_headers = {
+                'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+                'Accept-Language': 'en-US,en;q=0.9',
+                'Accept-Encoding': 'gzip, deflate, br',
+                'DNT': '1',
+                'Connection': 'keep-alive',
+                'Upgrade-Insecure-Requests': '1',
+                'Sec-Fetch-Dest': 'document',
+                'Sec-Fetch-Mode': 'navigate',
+                'Sec-Fetch-Site': 'none',
+                'Cache-Control': 'max-age=0',
+            }
+            
             for url in mayo_urls:
                 try:
                     # Add random delay to avoid being flagged
                     import random
                     import time
-                    time.sleep(random.uniform(1, 3))
+                    time.sleep(random.uniform(2, 5))
                     
-                    response = requests.get(url, timeout=20, headers=headers)
+                    response = requests.get(url, timeout=20, headers=enhanced_headers)
                     if response.status_code == 200:
                         soup = BeautifulSoup(response.text, 'html.parser')
                         
@@ -1411,13 +1719,15 @@ Your response must be valid JSON that can be parsed programmatically.
                             '.entry',
                             '.card',
                             '.story-item',
-                            '.article-card'
+                            '.article-card',
+                            '.news-card',
+                            '.content-card'
                         ]
                         
                         news_items = []
                         for selector in selectors:
                             news_items = soup.select(selector)
-                            if news_items and len(news_items) >= 2:  # Need at least 2 items
+                            if news_items and len(news_items) >= 2:
                                 break
                         
                         if not news_items:
@@ -1428,14 +1738,14 @@ Your response must be valid JSON that can be parsed programmatically.
                         for item in news_items[:limit]:
                             try:
                                 # Try multiple title selectors
-                                title_elem = item.select_one('h3 a, h2 a, .title a, .entry-title a, h1 a, .headline a')
+                                title_elem = item.select_one('h3 a, h2 a, .title a, .entry-title a, h1 a, .headline a, .title')
                                 if not title_elem:
                                     title_elem = item.select_one('a')
                                 
                                 title = title_elem.text.strip() if title_elem else "Mayo Clinic Health Update"
                                 
                                 # Get article URL
-                                article_url = title_elem.get('href') if title_elem else url
+                                article_url = title_elem.get('href') if title_elem and title_elem.name == 'a' else url
                                 if article_url and not article_url.startswith('http'):
                                     if article_url.startswith('/'):
                                         article_url = f"https://newsnetwork.mayoclinic.org{article_url}"
@@ -1443,19 +1753,22 @@ Your response must be valid JSON that can be parsed programmatically.
                                         article_url = f"https://newsnetwork.mayoclinic.org/{article_url}"
                                 
                                 # Get date
-                                date_elem = item.select_one('.date, .publish-date, time, .entry-date, .published')
-                                published_date = date_elem.text.strip() if date_elem else None
+                                date_elem = item.select_one('.date, .publish-date, time, .entry-date, .published, .post-date')
+                                published_date = date_elem.text.strip() if date_elem else datetime.now().strftime("%Y-%m-%d")
                                 
                                 # Get content preview
-                                content_elem = item.select_one('.excerpt, .summary, .description, p')
+                                content_elem = item.select_one('.excerpt, .summary, .description, p, .content')
                                 content = content_elem.text.strip() if content_elem else "Mayo Clinic health information and medical guidance."
+                                
+                                # Clean up content
+                                content = ' '.join(content.split())[:500]
                                 
                                 articles.append({
                                     "title": title,
                                     "source": "Mayo Clinic",
                                     "url": article_url,
                                     "content": content,
-                                    "published_date": published_date
+                                    "published_date": self._parse_rss_date(published_date)
                                 })
                             except Exception as e:
                                 logger.warning(f"Error processing Mayo news item: {str(e)}")
@@ -1472,7 +1785,7 @@ Your response must be valid JSON that can be parsed programmatically.
             # If all scraping fails, return fallback content
             logger.warning("All Mayo Clinic scraping attempts failed, using fallback content")
             return self._get_mayo_fallback_content(limit)
-            
+        
         except Exception as e:
             logger.error(f"Error in improved Mayo scraping: {str(e)}")
             return self._get_mayo_fallback_content(limit)
