@@ -5,6 +5,17 @@ set -e
 
 echo "=== Starting ${SERVICE_NAME:-unknown} service ==="
 
+# Ensure environment variables are loaded
+if [ -f /app/.env ]; then
+    echo "Re-loading environment variables from .env"
+    set -a
+    source /app/.env
+    set +a
+    echo "Current DB_NAME: $DB_NAME"
+    echo "Current DB_HOST: $DB_HOST"
+    echo "Current DB_USER: $DB_USER"
+fi
+
 # Function to wait for service
 wait_for_service() {
     local host=$1
@@ -27,7 +38,7 @@ wait_for_service() {
 }
 
 # Wait for Redis first (all services need it)
-wait_for_service redis 6379 "Redis"
+wait_for_service ${REDIS_HOST:-redis} ${REDIS_PORT:-6379} "Redis"
 
 # Only download model for web service or if explicitly needed
 if [ "$SERVICE_NAME" = "web" ] || [ "$INITIALIZE_XRAY_MODEL" = "True" ]; then
@@ -70,12 +81,38 @@ fi
 # Apply database migrations only for web service
 if [ "$SHOULD_MIGRATE" = "true" ]; then
     echo "Applying database migrations..."
-    python manage.py migrate --noinput
+    echo "Using database: $DB_NAME on host: $DB_HOST"
     
-    # Create superuser only once
-    echo "Creating superuser if needed..."
-    if [ "$DJANGO_SUPERUSER_USERNAME" ] && [ "$DJANGO_SUPERUSER_EMAIL" ] && [ "$DJANGO_SUPERUSER_PASSWORD" ]; then
-        python manage.py shell -c "
+    # Test database connection first
+    python -c "
+import os
+import django
+from django.conf import settings
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'praxia_backend.settings')
+django.setup()
+
+from django.db import connections
+try:
+    db = connections['default']
+    cursor = db.cursor()
+    cursor.execute('SELECT 1')
+    print(f'Database connection successful to: {settings.DATABASES[\"default\"][\"NAME\"]}')
+    print(f'Host: {settings.DATABASES[\"default\"][\"HOST\"]}')
+    print(f'User: {settings.DATABASES[\"default\"][\"USER\"]}')
+except Exception as e:
+    print(f'Database connection failed: {e}')
+    print(f'Trying to connect to: {settings.DATABASES[\"default\"][\"NAME\"]}')
+    print(f'Host: {settings.DATABASES[\"default\"][\"HOST\"]}')
+    exit(1)
+"
+    
+    if [ $? -eq 0 ]; then
+        python manage.py migrate --noinput
+        
+        # Create superuser only once
+        echo "Creating superuser if needed..."
+        if [ "$DJANGO_SUPERUSER_USERNAME" ] && [ "$DJANGO_SUPERUSER_EMAIL" ] && [ "$DJANGO_SUPERUSER_PASSWORD" ]; then
+            python manage.py shell -c "
 from django.contrib.auth import get_user_model
 User = get_user_model()
 try:
@@ -87,15 +124,15 @@ try:
 except Exception as e:
     print(f'Error creating superuser: {e}')
 " || echo "Superuser creation failed, continuing..."
-    fi
-    
-    # Collect static files
-    echo "Collecting static files..."
-    python manage.py collectstatic --noinput
-    
-    # Run health check
-    echo "Running initial health check..."
-    python manage.py shell -c "
+        fi
+        
+        # Collect static files
+        echo "Collecting static files..."
+        python manage.py collectstatic --noinput
+        
+        # Run health check
+        echo "Running initial health check..."
+        python manage.py shell -c "
 try:
     from api.AI.ai_healthcheck import startup_health_check
     result = startup_health_check()
@@ -103,7 +140,10 @@ try:
 except Exception as e:
     print(f'Health check failed: {e}')
 " || echo "Health check failed, continuing..."
-    
+    else
+        echo "Database connection failed, exiting..."
+        exit 1
+    fi
 else
     echo "Skipping database migrations for this service..."
 fi
@@ -134,7 +174,7 @@ if [[ "$SERVICE_NAME" == celery* ]]; then
     python -c "
 import redis
 try:
-    r = redis.Redis(host='redis', port=6379, db=1)
+    r = redis.Redis(host='${REDIS_HOST:-redis}', port=${REDIS_PORT:-6379}, db=1)
     r.flushdb()
     print('Cleared Celery broker database')
 except Exception as e:

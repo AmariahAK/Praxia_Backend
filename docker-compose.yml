@@ -15,6 +15,13 @@ services:
       - SERVICE_NAME=web
       - CELERY_WORKER_MAX_MEMORY_PER_CHILD=500000
       - CELERY_WORKER_MAX_TASKS_PER_CHILD=100
+      # Explicitly pass database variables
+      - DB_NAME=${DB_NAME}
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_HOST=${DB_HOST}
+      - DB_PORT=${DB_PORT}
+      - DB_ENGINE=${DB_ENGINE}
     depends_on:
       redis:
         condition: service_healthy
@@ -70,6 +77,13 @@ services:
       - CELERY_WORKER_DISABLE_RATE_LIMITS=True
       - OMP_NUM_THREADS=2
       - CUDA_VISIBLE_DEVICES=""
+      # Explicitly pass database variables
+      - DB_NAME=${DB_NAME}
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_HOST=${DB_HOST}
+      - DB_PORT=${DB_PORT}
+      - DB_ENGINE=${DB_ENGINE}
     depends_on:
       web:
         condition: service_healthy
@@ -100,6 +114,13 @@ services:
       - ./.env
     environment:
       - SERVICE_NAME=celery-beat
+      # Explicitly pass database variables
+      - DB_NAME=${DB_NAME}
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_HOST=${DB_HOST}
+      - DB_PORT=${DB_PORT}
+      - DB_ENGINE=${DB_ENGINE}
     depends_on:
       web:
         condition: service_healthy
@@ -124,6 +145,13 @@ services:
       - ./.env
     environment:
       - SERVICE_NAME=celery-monitor
+      # Explicitly pass database variables
+      - DB_NAME=${DB_NAME}
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_HOST=${DB_HOST}
+      - DB_PORT=${DB_PORT}
+      - DB_ENGINE=${DB_ENGINE}
     depends_on:
       web:
         condition: service_healthy

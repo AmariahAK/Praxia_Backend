@@ -18,6 +18,13 @@ services:
       - GUNICORN_WORKERS=4
       - GUNICORN_MAX_REQUESTS=1000
       - GUNICORN_MAX_REQUESTS_JITTER=50
+      # Explicitly pass database variables
+      - DB_NAME=${DB_NAME}
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_HOST=${DB_HOST}
+      - DB_PORT=${DB_PORT}
+      - DB_ENGINE=${DB_ENGINE}
     depends_on:
       redis:
         condition: service_healthy
@@ -77,6 +84,13 @@ services:
       - CELERY_WORKER_MAX_TASKS_PER_CHILD=100
       - CELERY_WORKER_DISABLE_RATE_LIMITS=True
       - OMP_NUM_THREADS=2
+      # Explicitly pass database variables
+      - DB_NAME=${DB_NAME}
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_HOST=${DB_HOST}
+      - DB_PORT=${DB_PORT}
+      - DB_ENGINE=${DB_ENGINE}
     depends_on:
       web:
         condition: service_healthy
@@ -105,6 +119,13 @@ services:
     environment:
       - DEBUG=False
       - SERVICE_NAME=celery-beat
+      # Explicitly pass database variables
+      - DB_NAME=${DB_NAME}
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_HOST=${DB_HOST}
+      - DB_PORT=${DB_PORT}
+      - DB_ENGINE=${DB_ENGINE}
     depends_on:
       web:
         condition: service_healthy
@@ -130,6 +151,13 @@ services:
     environment:
       - DEBUG=False
       - SERVICE_NAME=celery-monitor
+      # Explicitly pass database variables
+      - DB_NAME=${DB_NAME}
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_HOST=${DB_HOST}
+      - DB_PORT=${DB_PORT}
+      - DB_ENGINE=${DB_ENGINE}
     depends_on:
       web:
         condition: service_healthy
@@ -340,7 +368,7 @@ services:
     env_file:
       - ./.env.prod
     environment:
-      - DATA_SOURCE_NAME=postgresql://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT:-5432}/${DB_NAME}?sslmode=disable
+           - DATA_SOURCE_NAME=postgresql://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT:-5432}/${DB_NAME}?sslmode=disable
     restart: always
     networks:
       - praxia-network

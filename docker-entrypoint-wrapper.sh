@@ -33,14 +33,30 @@ export BASE_DIR=/app
 # Check if ENVIRONMENT variable is set to 'production'
 if [ "$ENVIRONMENT" = "production" ]; then
     echo "Running in production mode with entrypoint.prod.sh and .env.prod"
-    set -a
-    source /app/.env.prod 2>/dev/null || echo "Warning: .env.prod not found"
-    set +a
+    # Load .env.prod and export all variables
+    if [ -f /app/.env.prod ]; then
+        echo "Loading environment variables from .env.prod"
+        set -a
+        source /app/.env.prod
+        set +a
+        echo "Loaded DB_NAME: $DB_NAME"
+        echo "Loaded DB_HOST: $DB_HOST"
+    else
+        echo "Warning: .env.prod not found"
+    fi
     exec /app/entrypoint.prod.sh "$@"
 else
     echo "Running in development mode with entrypoint.sh and .env"
-    set -a
-    source /app/.env 2>/dev/null || echo "Warning: .env not found"
-    set +a
+    # Load .env and export all variables
+    if [ -f /app/.env ]; then
+        echo "Loading environment variables from .env"
+        set -a
+        source /app/.env
+        set +a
+        echo "Loaded DB_NAME: $DB_NAME"
+        echo "Loaded DB_HOST: $DB_HOST"
+    else
+        echo "Warning: .env not found"
+    fi
     exec /app/entrypoint.sh "$@"
 fi

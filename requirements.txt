@@ -46,3 +46,4 @@ qrcode
 django-otp
 torchxrayvision
 feedparser
+python-dotenv

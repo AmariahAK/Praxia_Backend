@@ -5,9 +5,28 @@ Django settings for praxia_backend project.
 from pathlib import Path
 import os
 from decouple import config, Csv
+from dotenv import load_dotenv
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+# Force reload environment variables
+def reload_env():
+    """Force reload environment variables from .env files"""
+    env_file = None
+    if os.environ.get('ENVIRONMENT') == 'production':
+        env_file = BASE_DIR / '.env.prod'
+    else:
+        env_file = BASE_DIR / '.env'
+    
+    if env_file and env_file.exists():
+        print(f"Force loading environment from: {env_file}")
+        load_dotenv(env_file, override=True)
+        print(f"Loaded DB_NAME: {os.environ.get('DB_NAME')}")
+        print(f"Loaded DB_HOST: {os.environ.get('DB_HOST')}")
+
+# Force reload environment variables
+reload_env()
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.0/howto/deployment/checklist/
@@ -80,30 +99,35 @@ WSGI_APPLICATION = 'praxia_backend.wsgi.application'
 # https://docs.djangoproject.com/en/5.0/ref/settings/#databases
 
 # Database sharding settings
-USE_SHARDING = config('USE_SHARDING', cast=bool)
+USE_SHARDING = config('USE_SHARDING', cast=bool, default=False)
+
+# Force database configuration from environment
+DB_CONFIG = {
+    'ENGINE': config('DB_ENGINE', default='django.db.backends.postgresql'),
+    'NAME': config('DB_NAME'),
+    'USER': config('DB_USER'),
+    'PASSWORD': config('DB_PASSWORD'),
+    'HOST': config('DB_HOST'),
+    'PORT': config('DB_PORT'),
+    'CONN_MAX_AGE': config('DB_CONN_MAX_AGE', cast=int, default=60),
+    'OPTIONS': {
+        'connect_timeout': config('DB_CONNECT_TIMEOUT', cast=int, default=10),
+        'application_name': 'praxia',
+        'keepalives': config('DB_KEEPALIVES', cast=int, default=1),
+        'keepalives_idle': config('DB_KEEPALIVES_IDLE', cast=int, default=600),
+        'keepalives_interval': config('DB_KEEPALIVES_INTERVAL', cast=int, default=30),
+        'keepalives_count': config('DB_KEEPALIVES_COUNT', cast=int, default=3),
+    },
+    'ATOMIC_REQUESTS': config('DB_ATOMIC_REQUESTS', cast=bool, default=True),
+    'AUTOCOMMIT': config('DB_AUTOCOMMIT', cast=bool, default=True),
+}
+
+print(f"Database configuration: {DB_CONFIG['NAME']} on {DB_CONFIG['HOST']}:{DB_CONFIG['PORT']}")
 
 if USE_SHARDING:
     # Define multiple database connections for sharding
     DATABASES = {
-        'default': {
-            'ENGINE': config('DB_ENGINE'),
-            'NAME': config('DB_NAME'),
-            'USER': config('DB_USER'),
-            'PASSWORD': config('DB_PASSWORD'),
-            'HOST': config('DB_HOST'),
-            'PORT': config('DB_PORT'),
-            'CONN_MAX_AGE': config('DB_CONN_MAX_AGE', cast=int),
-            'OPTIONS': {
-                'connect_timeout': config('DB_CONNECT_TIMEOUT', cast=int),
-                'application_name': 'praxia',
-                'keepalives': config('DB_KEEPALIVES', cast=int),
-                'keepalives_idle': config('DB_KEEPALIVES_IDLE', cast=int),
-                'keepalives_interval': config('DB_KEEPALIVES_INTERVAL', cast=int),
-                'keepalives_count': config('DB_KEEPALIVES_COUNT', cast=int),
-            },
-            'ATOMIC_REQUESTS': config('DB_ATOMIC_REQUESTS', cast=bool),
-            'AUTOCOMMIT': config('DB_AUTOCOMMIT', cast=bool),
-        },
+        'default': DB_CONFIG,
         'shard_1': {
             'ENGINE': config('DB_ENGINE'),
             'NAME': config('SHARD1_DB_NAME'),
@@ -148,25 +172,7 @@ if USE_SHARDING:
     DATABASE_ROUTERS = ['api.db_routers.ShardingRouter']
 else:
     DATABASES = {
-        'default': {
-            'ENGINE': config('DB_ENGINE'),
-            'NAME': config('DB_NAME'),
-            'USER': config('DB_USER'),
-            'PASSWORD': config('DB_PASSWORD'),
-            'HOST': config('DB_HOST'),
-            'PORT': config('DB_PORT'),
-            'CONN_MAX_AGE': config('DB_CONN_MAX_AGE', cast=int),
-            'OPTIONS': {
-                'connect_timeout': config('DB_CONNECT_TIMEOUT', cast=int),
-                'application_name': 'praxia',
-                'keepalives': config('DB_KEEPALIVES', cast=int),
-                'keepalives_idle': config('DB_KEEPALIVES_IDLE', cast=int),
-                'keepalives_interval': config('DB_KEEPALIVES_INTERVAL', cast=int),
-                'keepalives_count': config('DB_KEEPALIVES_COUNT', cast=int),
-            },
-            'ATOMIC_REQUESTS': config('DB_ATOMIC_REQUESTS', cast=bool),
-            'AUTOCOMMIT': config('DB_AUTOCOMMIT', cast=bool),
-        }
+        'default': DB_CONFIG
     }
 
 # Password validation
@@ -192,7 +198,7 @@ CHANNEL_LAYERS = {
     'default': {
         'BACKEND': 'channels_redis.core.RedisChannelLayer',
         'CONFIG': {
-            "hosts": [(config('REDIS_HOST'), config('REDIS_PORT', cast=int))],
+            "hosts": [(config('REDIS_HOST', default='redis'), config('REDIS_PORT', cast=int, default=6379))],
         },
     },
 }
@@ -200,26 +206,26 @@ CHANNEL_LAYERS = {
 # Internationalization
 # https://docs.djangoproject.com/en/5.0/topics/i18n/
 
-LANGUAGE_CODE = config('LANGUAGE_CODE')
-TIME_ZONE = config('TIME_ZONE')
-USE_I18N = config('USE_I18N', cast=bool)
-USE_TZ = config('USE_TZ', cast=bool)
+LANGUAGE_CODE = config('LANGUAGE_CODE', default='en-us')
+TIME_ZONE = config('TIME_ZONE', default='UTC')
+USE_I18N = config('USE_I18N', cast=bool, default=True)
+USE_TZ = config('USE_TZ', cast=bool, default=True)
 
 # Email Configurations
-EMAIL_BACKEND = config('EMAIL_BACKEND')
-EMAIL_HOST = config('EMAIL_HOST')
-EMAIL_PORT = config('EMAIL_PORT', cast=int)
-EMAIL_USE_TLS = config('EMAIL_USE_TLS', cast=bool)
-EMAIL_HOST_USER = config('EMAIL_HOST_USER')
-EMAIL_HOST_PASSWORD = config('EMAIL_HOST_PASSWORD')
-DEFAULT_FROM_EMAIL = config('DEFAULT_FROM_EMAIL')
+EMAIL_BACKEND = config('EMAIL_BACKEND', default='django.core.mail.backends.console.EmailBackend')
+EMAIL_HOST = config('EMAIL_HOST', default='localhost')
+EMAIL_PORT = config('EMAIL_PORT', cast=int, default=587)
+EMAIL_USE_TLS = config('EMAIL_USE_TLS', cast=bool, default=True)
+EMAIL_HOST_USER = config('EMAIL_HOST_USER', default='')
+EMAIL_HOST_PASSWORD = config('EMAIL_HOST_PASSWORD', default='')
+DEFAULT_FROM_EMAIL = config('DEFAULT_FROM_EMAIL', default='noreply@praxia.ai')
 
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/5.0/howto/static-files/
 
 # CDN settings
-USE_CDN = config('USE_CDN', cast=bool)
-CDN_URL = config('CDN_URL')
+USE_CDN = config('USE_CDN', cast=bool, default=False)
+CDN_URL = config('CDN_URL', default='')
 
 if USE_CDN and CDN_URL:
     # Prepend CDN URL to static and media URLs in production
@@ -230,7 +236,7 @@ else:
     MEDIA_URL = '/media/'
 
 # AWS S3 settings for CDN (if using AWS CloudFront with S3)
-if config('USE_S3', cast=bool):
+if config('USE_S3', cast=bool, default=False):
     # AWS settings
     AWS_ACCESS_KEY_ID = config('AWS_ACCESS_KEY_ID')
     AWS_SECRET_ACCESS_KEY = config('AWS_SECRET_ACCESS_KEY')
@@ -278,31 +284,31 @@ REST_FRAMEWORK = {
         'rest_framework.parsers.MultiPartParser',
     ],
     'DEFAULT_THROTTLE_RATES': {
-        'anon': config('REST_FRAMEWORK_DEFAULT_THROTTLE_RATES_ANON'),
-        'user': config('REST_FRAMEWORK_DEFAULT_THROTTLE_RATES_USER'),
-        'ai_consultation': config('REST_FRAMEWORK_DEFAULT_THROTTLE_RATES_AI_CONSULTATION'),
-        'ai_xray': config('REST_FRAMEWORK_DEFAULT_THROTTLE_RATES_AI_XRAY'),
-        'ai_research': config('REST_FRAMEWORK_DEFAULT_THROTTLE_RATES_AI_RESEARCH'),
-        'ai_chat': config('REST_FRAMEWORK_DEFAULT_THROTTLE_RATES_AI_CHAT'),
+        'anon': config('REST_FRAMEWORK_DEFAULT_THROTTLE_RATES_ANON', default='100/hour'),
+        'user': config('REST_FRAMEWORK_DEFAULT_THROTTLE_RATES_USER', default='1000/hour'),
+        'ai_consultation': config('REST_FRAMEWORK_DEFAULT_THROTTLE_RATES_AI_CONSULTATION', default='10/hour'),
+        'ai_xray': config('REST_FRAMEWORK_DEFAULT_THROTTLE_RATES_AI_XRAY', default='5/hour'),
+        'ai_research': config('REST_FRAMEWORK_DEFAULT_THROTTLE_RATES_AI_RESEARCH', default='20/hour'),
+        'ai_chat': config('REST_FRAMEWORK_DEFAULT_THROTTLE_RATES_AI_CHAT', default='50/hour'),
     }
 }
 
 # CORS settings
-CORS_ALLOW_ALL_ORIGINS = config('CORS_ALLOW_ALL_ORIGINS', cast=bool)
-CORS_ALLOWED_ORIGINS = config('CORS_ALLOWED_ORIGINS', cast=Csv())
+CORS_ALLOW_ALL_ORIGINS = config('CORS_ALLOW_ALL_ORIGINS', cast=bool, default=False)
+CORS_ALLOWED_ORIGINS = config('CORS_ALLOWED_ORIGINS', cast=Csv, default='http://localhost:3000,http://127.0.0.1:3000')
 
 # Celery settings
-CELERY_BROKER_URL = config('CELERY_BROKER_URL')
-CELERY_RESULT_BACKEND = config('CELERY_RESULT_BACKEND')
-CELERY_ACCEPT_CONTENT = config('CELERY_ACCEPT_CONTENT', cast=Csv())
-CELERY_TASK_SERIALIZER = config('CELERY_TASK_SERIALIZER')
-CELERY_RESULT_SERIALIZER = config('CELERY_RESULT_SERIALIZER')
+CELERY_BROKER_URL = config('CELERY_BROKER_URL', default='redis://redis:6379/1')
+CELERY_RESULT_BACKEND = config('CELERY_RESULT_BACKEND', default='redis://redis:6379/1')
+CELERY_ACCEPT_CONTENT = config('CELERY_ACCEPT_CONTENT', cast=Csv, default='json')
+CELERY_TASK_SERIALIZER = config('CELERY_TASK_SERIALIZER', default='json')
+CELERY_RESULT_SERIALIZER = config('CELERY_RESULT_SERIALIZER', default='json')
 CELERY_TIMEZONE = TIME_ZONE
 
 # AI settings
 TOGETHER_AI_API_KEY = config('TOGETHER_AI_API_KEY')
 TOGETHER_AI_MODEL = config('TOGETHER_AI_MODEL')
-INITIALIZE_XRAY_MODEL = config('INITIALIZE_XRAY_MODEL', cast=bool)
+INITIALIZE_XRAY_MODEL = config('INITIALIZE_XRAY_MODEL')
 
 # Health check settings
 HEALTH_CHECK_INTERVAL = config('HEALTH_CHECK_INTERVAL', cast=int, default=21600)  
@@ -350,16 +356,15 @@ LOGGING = {
 LIBRETRANSLATE_URL = config('LIBRETRANSLATE_URL')
 
 # Health news settings
-HEALTH_NEWS_SOURCES = config('HEALTH_NEWS_SOURCES', cast=Csv())
-HEALTH_NEWS_CACHE_TIMEOUT = config('HEALTH_NEWS_CACHE_TIMEOUT', cast=int)
+HEALTH_NEWS_SOURCES = config('HEALTH_NEWS_SOURCES', cast=Csv, default='who,cdc,mayo')
+HEALTH_NEWS_CACHE_TIMEOUT = config('HEALTH_NEWS_CACHE_TIMEOUT', cast=int, default=3600)
 
 # 2FA settings
-OTP_TOTP_ISSUER = config('OTP_TOTP_ISSUER')
+OTP_TOTP_ISSUER = config('OTP_TOTP_ISSUER', default='Praxia')
 
 # File upload limits
-DATA_UPLOAD_MAX_MEMORY_SIZE = config('DATA_UPLOAD_MAX_MEMORY_SIZE', cast=int)
-FILE_UPLOAD_MAX_MEMORY_SIZE = config('FILE_UPLOAD_MAX_MEMORY_SIZE', cast=int)
+DATA_UPLOAD_MAX_MEMORY_SIZE = config('DATA_UPLOAD_MAX_MEMORY_SIZE', cast=int, default=104857600)  
+FILE_UPLOAD_MAX_MEMORY_SIZE = config('FILE_UPLOAD_MAX_MEMORY_SIZE', cast=int, default=104857600)  
 
 # Frontend URL
 FRONTEND_URL = config('FRONTEND_URL')
-
