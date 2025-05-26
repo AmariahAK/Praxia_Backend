@@ -47,3 +47,4 @@ django-otp
 torchxrayvision
 feedparser
 python-dotenv
+python-dateutil

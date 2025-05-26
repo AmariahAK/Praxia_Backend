@@ -9,6 +9,16 @@ app = Celery('praxia_backend')
 
 app.config_from_object('django.conf:settings', namespace='CELERY')
 
+# Configure Celery to avoid signal conflicts
+app.conf.update(
+    worker_disable_rate_limits=True,
+    task_ignore_result=False,
+    task_store_eager_result=True,
+    worker_prefetch_multiplier=1,
+    task_acks_late=True,
+    worker_max_tasks_per_child=1000,
+)
+
 # Load task modules from all registered Django app configs.
 app.autodiscover_tasks()
 

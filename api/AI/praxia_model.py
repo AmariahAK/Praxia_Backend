@@ -15,6 +15,7 @@ from io import BytesIO
 from django.conf import settings
 from bs4 import BeautifulSoup
 from django.core.cache import cache
+from ..utils.timeout_utils import ThreadPoolExecutor, FutureTimeoutError
 from monai.transforms import (
     Compose,
     LoadImage,
@@ -1000,28 +1001,20 @@ Your response must be valid JSON that can be parsed programmatically.
         try:
             articles = []
             
-            # Strategy 1: Try RSS feeds first with timeout
+            # Strategy 1: Try RSS feeds first with timeout using ThreadPoolExecutor
             try:
-                import signal
-                
-                def timeout_handler(signum, frame):
-                    raise TimeoutError("RSS retrieval timeout")
-                
-                signal.signal(signal.SIGALRM, timeout_handler)
-                signal.alarm(15)  # 15 second timeout for RSS
-                
-                try:
-                    rss_articles = self._get_health_news_from_rss_direct(source, limit)
-                    if rss_articles:
-                        articles.extend(rss_articles)
-                        logger.info("Retrieved articles from RSS feeds", count=len(rss_articles))
-                    signal.alarm(0)  # Cancel timeout
-                except TimeoutError:
-                    logger.warning("RSS retrieval timed out")
-                    signal.alarm(0)
-                except Exception as e:
-                    signal.alarm(0)
-                    logger.warning("RSS feed retrieval failed", error=str(e))
+                with ThreadPoolExecutor(max_workers=1) as executor:
+                    future = executor.submit(self._get_health_news_from_rss_direct, source, limit)
+                    try:
+                        rss_articles = future.result(timeout=15)  # 15 second timeout
+                        if rss_articles:
+                            articles.extend(rss_articles)
+                            logger.info("Retrieved articles from RSS feeds", count=len(rss_articles))
+                    except FutureTimeoutError:
+                        logger.warning("RSS retrieval timed out")
+                        future.cancel()
+                    except Exception as e:
+                        logger.warning("RSS feed retrieval failed", error=str(e))
             except Exception as e:
                 logger.warning("RSS strategy setup failed", error=str(e))
             
@@ -1207,17 +1200,17 @@ Your response must be valid JSON that can be parsed programmatically.
         try:
             # Common RSS date formats
             date_formats = [
-                "%a, %d %b %Y %H:%M:%S %Z",  # "Sat, 24 May 2025 17:47:21 Z"
-                "%a, %d %b %Y %H:%M:%S %z",  # "Sat, 24 May 2025 20:56:00 GMT"
-                "%Y-%m-%dT%H:%M:%S%z",       # ISO format
-                "%Y-%m-%d %H:%M:%S",         # Simple format
-                "%Y-%m-%d",                  # Date only
+                "%a, %d %b %Y %H:%M:%S %Z",
+                "%a, %d %b %Y %H:%M:%S %z",
+                "%Y-%m-%dT%H:%M:%S%z",
+                "%Y-%m-%d %H:%M:%S",
+                "%Y-%m-%d",
             ]
             
             # Clean the date string
             cleaned_date = date_string.strip()
             
-            # Handle common timezone abbreviations
+            # Handle timezone abbreviations
             timezone_replacements = {
                 ' GMT': ' +0000',
                 ' UTC': ' +0000',
@@ -1241,12 +1234,12 @@ Your response must be valid JSON that can be parsed programmatically.
                 except ValueError:
                     continue
             
-            # If all parsing fails, try using dateutil
+            # If all parsing fails, try using dateutil (if available)
             try:
                 from dateutil import parser
                 parsed_date = parser.parse(cleaned_date)
                 return parsed_date.strftime("%Y-%m-%d")
-            except:
+            except (ImportError, Exception):
                 pass
             
             # Final fallback
@@ -1256,6 +1249,7 @@ Your response must be valid JSON that can be parsed programmatically.
         except Exception as e:
             logger.error(f"Error parsing date {date_string}: {str(e)}")
             return datetime.now().strftime("%Y-%m-%d")
+
 
     def _scrape_health_news_direct(self, source='all', limit=3):
         """Direct web scraping without circuit breaker interference"""

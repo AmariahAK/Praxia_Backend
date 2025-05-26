@@ -298,6 +298,22 @@ if isinstance(cors_origins, str):
 else:
     CORS_ALLOWED_ORIGINS = cors_origins
 
+# Cors headers
+CORS_ALLOW_HEADERS = [
+    'accept',
+    'accept-encoding',
+    'authorization',
+    'content-type',
+    'dnt',
+    'origin',
+    'user-agent',
+    'x-csrftoken',
+    'x-requested-with',
+    'x-session-key',
+]
+
+CORS_ALLOW_CREDENTIALS = True
+
 # Celery settings
 CELERY_BROKER_URL = config('CELERY_BROKER_URL')
 CELERY_RESULT_BACKEND = config('CELERY_RESULT_BACKEND')

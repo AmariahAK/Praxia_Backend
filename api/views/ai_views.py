@@ -5,6 +5,7 @@ from rest_framework.response import Response
 from rest_framework.generics import RetrieveAPIView
 from rest_framework.permissions import AllowAny
 from datetime import datetime
+from ..utils.timeout_utils import FutureTimeoutError, ThreadPoolExecutor
 from ..AI.praxia_model import (
     PraxiaAI,
     analyze_xray_task,
@@ -163,37 +164,28 @@ class ChatMessageView(APIView):
                     logger.info("X-ray analysis queued", user=request.user.username, xray_id=xray.id)
                 else:
                     # ENHANCED: Regular text processing with timeout and fallback
-                    from django.core.exceptions import ValidationError
-                    
                     praxia = PraxiaAI()
                     chat_topic = session.title if session.title != "New Chat" else None
                     
-                    # Add timeout wrapper
-                    import signal
-                    
-                    def timeout_handler(signum, frame):
-                        raise TimeoutError("AI processing timeout")
-                    
-                    signal.signal(signal.SIGALRM, timeout_handler)
-                    signal.alarm(45)  # 45 second timeout
-                    
-                    try:
+                    # Use ThreadPoolExecutor instead of signal for timeout
+                    def process_ai_request():
                         if "analyze my diet" in message_content.lower():
-                            ai_response = praxia.analyze_diet(message_content, user_profile)
+                            return praxia.analyze_diet(message_content, user_profile)
                         elif "medication" in message_content.lower():
-                            ai_response = praxia.analyze_medication(message_content, user_profile)
+                            return praxia.analyze_medication(message_content, user_profile)
                         else:
-                            ai_response = praxia.diagnose_symptoms(message_content, user_profile, chat_topic)
+                            return praxia.diagnose_symptoms(message_content, user_profile, chat_topic)
                     
-                        signal.alarm(0)  # Cancel timeout
-                    
-                    except TimeoutError:
-                        logger.error("AI processing timeout", user=request.user.username)
-                        ai_response = self._get_timeout_response()
-                    except Exception as e:
-                        signal.alarm(0)  # Cancel timeout
-                        logger.error("AI processing error", error=str(e))
-                        ai_response = self._get_error_response(str(e))
+                    with ThreadPoolExecutor(max_workers=1) as executor:
+                        future = executor.submit(process_ai_request)
+                        try:
+                            ai_response = future.result(timeout=45)  # 45 second timeout
+                        except FutureTimeoutError:
+                            logger.error("AI processing timeout", user=request.user.username)
+                            ai_response = self._get_timeout_response()
+                        except Exception as e:
+                            logger.error("AI processing error", error=str(e))
+                            ai_response = self._get_error_response(str(e))
         
             except Exception as e:
                 logger.error("Unexpected error in message processing", error=str(e))
