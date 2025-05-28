@@ -1,12 +1,17 @@
 global:
   scrape_interval: 15s
   evaluation_interval: 15s
+  external_labels:
+    environment: 'development'
+    cluster: 'praxia-dev'
 
 scrape_configs:
-  - job_name: 'praxia'
-    scrape_interval: 5s
+  - job_name: 'praxia-web'
+    scrape_interval: 10s
     static_configs:
       - targets: ['web:8000']
+    metrics_path: '/metrics'
+    scrape_timeout: 10s
 
   - job_name: 'node-exporter'
     static_configs:
@@ -15,6 +20,8 @@ scrape_configs:
   - job_name: 'cadvisor'
     static_configs:
       - targets: ['cadvisor:8080']
+    scrape_interval: 30s
+    scrape_timeout: 10s
 
   - job_name: 'redis'
     static_configs:
