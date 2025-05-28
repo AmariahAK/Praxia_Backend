@@ -269,7 +269,7 @@ class PraxiaAI:
         
         source_lower = str(journal_or_source).lower()
         
-        # Map to your actual icon file names (without .svg extension)
+        # Map to your actual icon file names (without .png extension)
         icon_mapping = {
             'who': 'who-logo',
             'world health organization': 'who-logo',
