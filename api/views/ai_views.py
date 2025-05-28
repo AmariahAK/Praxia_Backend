@@ -179,7 +179,7 @@ class ChatMessageView(APIView):
                     with ThreadPoolExecutor(max_workers=1) as executor:
                         future = executor.submit(process_ai_request)
                         try:
-                            ai_response = future.result(timeout=30) 
+                            ai_response = future.result(timeout=60)  # Increased from 30 to 60 seconds
                         except FutureTimeoutError:
                             logger.error("AI processing timeout", user=request.user.username)
                             ai_response = self._get_timeout_response()
@@ -241,7 +241,9 @@ class ChatMessageView(APIView):
                 "advice": "I'm taking longer than usual to process your request. Please try again.",
                 "clarification": ["Could you try rephrasing your question more concisely?"]
             },
-            "disclaimer": "This is a timeout response. Please try again."
+            "medical_topic": "timeout_response",
+            "disclaimer": "This is a timeout response. Please try again.",
+            "status": "timeout"  
         }
 
     def _get_error_response(self, error_msg):
@@ -262,7 +264,6 @@ class ChatMessageView(APIView):
         if not isinstance(response, dict):
             return {"error": "Invalid response format"}
         
-        # Ensure required fields exist
         if 'diagnosis' not in response:
             response['diagnosis'] = {
                 "conditions": ["Response formatting error"],
@@ -278,8 +279,7 @@ class ChatMessageView(APIView):
         """Update session title if it's still 'New Chat'"""
         try:
             if session.title == "New Chat" and message_content:
-                # Extract a meaningful title from the message
-                title_words = message_content.split()[:5]  # First 5 words
+                title_words = message_content.split()[:5] 
                 new_title = ' '.join(title_words)
                 if len(new_title) > 50:
                     new_title = new_title[:50] + "..."
