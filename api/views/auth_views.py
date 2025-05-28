@@ -182,7 +182,6 @@ class LoginView(APIView):
         if serializer.is_valid():
             email = serializer.validated_data['email']
             password = serializer.validated_data['password']
-            token = serializer.validated_data.get('token', '')
             
             try:
                 user = User.objects.get(email=email)
@@ -201,29 +200,6 @@ class LoginView(APIView):
             if not user:
                 return Response({'error': 'Invalid credentials'}, status=status.HTTP_401_UNAUTHORIZED)
             
-            # Check if 2FA is enabled
-            try:
-                from ..models import UserTOTP
-                totp = UserTOTP.objects.get(user=user, is_verified=True)
-                
-                # If 2FA is enabled, verify token
-                if not token:
-                    return Response({
-                        'error': '2FA is enabled for this account. Please provide a verification code.',
-                        'requires_2fa': True
-                    }, status=status.HTTP_401_UNAUTHORIZED)
-                
-                # Verify TOTP token
-                if not totp.verify_token(token):
-                    return Response({
-                        'error': 'Invalid verification code.',
-                        'requires_2fa': True
-                    }, status=status.HTTP_401_UNAUTHORIZED)
-                
-            except UserTOTP.DoesNotExist:
-                # 2FA not enabled, continue with normal login
-                pass
-            
             # Generate JWT tokens
             access_token, refresh_token = JWTManager.generate_tokens(user)
             
@@ -235,7 +211,7 @@ class LoginView(APIView):
                 **client_info
             )
             
-            # Check if user has 2FA enabled
+            # Check if user has 2FA enabled (for info only)
             has_2fa = UserTOTP.objects.filter(user=user, is_verified=True).exists()
             
             return Response({
@@ -538,6 +514,24 @@ class TOTPDisableView(APIView):
             return Response({
                 'error': '2FA is not enabled for this account.'
             }, status=status.HTTP_404_NOT_FOUND)
+
+class TOTPStatusView(APIView):
+    """View for checking 2FA status"""
+    authentication_classes = [SessionJWTAuthentication]
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def get(self, request):
+        """Check if user has 2FA enabled"""
+        try:
+            totp = UserTOTP.objects.get(user=request.user, is_verified=True)
+            return Response({
+                'has_2fa': True,
+                'created_at': totp.created_at
+            })
+        except UserTOTP.DoesNotExist:
+            return Response({
+                'has_2fa': False
+            })
 
 class UserSessionsView(APIView):
     """View for managing user sessions"""

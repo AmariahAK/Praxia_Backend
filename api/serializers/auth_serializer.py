@@ -55,7 +55,6 @@ class LoginSerializer(serializers.Serializer):
     """Serializer for user login"""
     email = serializers.EmailField(required=True)
     password = serializers.CharField(required=True)
-    token = serializers.CharField(required=False, allow_blank=True)  # TOTP token
 
 class EmailVerificationSerializer(serializers.Serializer):
     """Serializer for email verification"""
