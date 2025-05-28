@@ -53,7 +53,7 @@ def scheduled_health_check():
         results["status"] = "degraded"
 
     # Check circuit breakers
-    from ..circuit_breaker import who_breaker, mayo_breaker, together_ai_breaker, pubmed_breaker, rss_breaker
+    from ..circuit_breaker import who_breaker, together_ai_breaker, pubmed_breaker, rss_breaker
     circuit_breaker_status = check_circuit_breakers()
     results["services"]["circuit_breakers"] = circuit_breaker_status
 
@@ -73,7 +73,6 @@ def scheduled_health_check():
     # Check external services
     external_services = {
         "who_api": who_breaker,
-        "mayo_clinic": mayo_breaker,
         "together_ai": together_ai_breaker,
         "pubmed": pubmed_breaker,
         "rss_feeds": rss_breaker

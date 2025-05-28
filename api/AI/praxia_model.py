@@ -29,30 +29,64 @@ logger = structlog.get_logger()
 
 class PraxiaAI:
     """
-    Praxia AI model for healthcare assistance
+    Praxia AI Healthcare Assistant Model
+    
+    A comprehensive AI-powered healthcare assistant that provides:
+    - Symptom analysis and medical guidance
+    - X-ray image analysis using DenseNet
+    - Medical research retrieval from PubMed
+    - Health news aggregation from WHO and CDC
+    - Dietary and medication analysis
+    
+    Features:
+    - Circuit breaker pattern for external API reliability
+    - Intelligent caching for performance optimization
+    - User profile-based personalized recommendations
+    - Multi-language support through translation services
+    - Asynchronous processing with Celery integration
+    
     Developed by Amariah Kamau (https://www.linkedin.com/in/amariah-kamau-3156412a6/)
     GitHub: https://github.com/AmariahAK
+    
+    Open Source Healthcare AI - Contributing developers welcome!
     """
 
     def __init__(self):
+        """
+        Initialize the Praxia AI model with all necessary components.
+        
+        Sets up:
+        - AI identity and configuration
+        - Together AI API client
+        - PubMed research client
+        - PyTorch device detection (CUDA/CPU)
+        - DenseNet model for X-ray analysis (optional)
+        """
         self.identity = self._load_identity()
         self.together_api_key = settings.TOGETHER_AI_API_KEY
         self.together_model = settings.TOGETHER_AI_MODEL
-        self.cache_timeout = 60 * 60 * 24  # 24 hours cache
+        self.cache_timeout = 60 * 60 * 24  # 24 hours cache for research data
         self.pubmed_client = pymed.PubMed(tool="PraxiaAI", email="contact@praxia.ai")
         
-        # Improved CUDA detection
+        # Intelligent device detection for optimal performance
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         if self.device.type == "cuda":
             logger.info(f"Using CUDA device: {torch.cuda.get_device_name(0)}")
         else:
             logger.info("CUDA not available, using CPU")
         
+        # Initialize X-ray analysis model if enabled
         self.densenet_model = None
         if getattr(settings, "INITIALIZE_XRAY_MODEL", False):
             self._initialize_xray_model()
 
     def _load_identity(self):
+        """
+        Load AI identity configuration from file.
+        
+        Returns:
+            str: AI identity description for consistent personality
+        """
         identity_path = os.path.join(settings.BASE_DIR, 'data', 'ai_identity.txt')
         try:
             with open(identity_path, 'r') as file:
@@ -62,15 +96,26 @@ class PraxiaAI:
             return "Praxia - A healthcare AI assistant by Amariah Kamau"
 
     def _initialize_xray_model(self):
+        """
+        Initialize DenseNet model for X-ray image analysis.
+        
+        Attempts to load a pre-trained DenseNet121 model for medical imaging.
+        Falls back to a basic model structure if weights are unavailable.
+        
+        Model Architecture:
+        - DenseNet121 backbone
+        - Custom classifier for 3 classes: fracture, tumor, pneumonia
+        - CPU/CUDA compatible
+        """
         try:
-            # First try to use a fixed model if available
+            # Try to use fixed model if available (recommended approach)
             from ..utils.model_fix import fix_densenet_model
             fixed_model_path = fix_densenet_model()
             
             if fixed_model_path and os.path.exists(fixed_model_path):
                 logger.info(f"Loading fixed DenseNet model from {fixed_model_path}")
                 
-                # Add DenseNet and Sequential to safe globals list
+                # Configure safe model loading
                 from torch.serialization import add_safe_globals
                 import torchvision.models.densenet
                 import torch.nn.modules.container
@@ -79,54 +124,54 @@ class PraxiaAI:
                     torch.nn.modules.container.Sequential
                 ])
                 
-                # Try loading with weights_only=False for compatibility
+                # Load pre-trained model
                 self.densenet_model = torch.load(fixed_model_path, map_location=self.device, weights_only=False)
-                logger.info("Loaded model successfully")
+                logger.info("Pre-trained model loaded successfully")
                 
                 self.densenet_model.eval()
-                logger.info("Fixed DenseNet model loaded successfully")
+                logger.info("DenseNet model ready for X-ray analysis")
                 return
             
-            # If fixed model not available, try original approach
+            # Fallback: Load original model weights
             densenet_path = os.path.join(settings.BASE_DIR, 'data', 'models', 'densenet_xray.pth')
             if not os.path.exists(densenet_path):
-                logger.warning("DenseNet model weights not found at %s, will use fallback methods", densenet_path)
-                # Try to create a simple model as fallback
+                logger.warning("DenseNet model weights not found, creating fallback model")
+                # Create basic model structure for development
                 try:
                     from torchvision.models import densenet121
                     model = densenet121(weights=None)  
                     num_ftrs = model.classifier.in_features
-                    model.classifier = torch.nn.Linear(num_ftrs, 3)
+                    model.classifier = torch.nn.Linear(num_ftrs, 3)  # 3 classes: fracture, tumor, pneumonia
                     self.densenet_model = model
                     self.densenet_model.eval()
-                    logger.info("Created fallback DenseNet model")
+                    logger.info("Created fallback DenseNet model for development")
                 except Exception as e:
                     logger.error("Error creating fallback model: %s", str(e))
                     self.densenet_model = None
                 return
             
+            # Validate model file size
             if os.path.getsize(densenet_path) < 1000000:  
-                logger.warning("DenseNet model file is too small, may be corrupted")
+                logger.warning("DenseNet model file appears corrupted (too small)")
                 self.densenet_model = None
                 return
             
-            # Try to load the model with the safe globals approach
+            # Load model with proper error handling
             try:
-                # Add DenseNet to safe globals list
                 from torch.serialization import add_safe_globals
                 import torchvision.models.densenet
                 add_safe_globals([torchvision.models.densenet.DenseNet])
                 
-                # Try with weights_only=True first
+                # Attempt secure loading first
                 try:
                     loaded_obj = torch.load(densenet_path, map_location=self.device, weights_only=True)
                 except Exception as e:
-                    logger.warning(f"Failed to load with weights_only=True: {str(e)}")
-                    # Fall back to weights_only=False if necessary
+                    logger.warning(f"Secure loading failed: {str(e)}, trying compatibility mode")
                     loaded_obj = torch.load(densenet_path, map_location=self.device, weights_only=False)
                 
-                # If it's an OrderedDict, it's state_dict, need to create model first
+                # Handle different model formats
                 if isinstance(loaded_obj, collections.OrderedDict):
+                    # State dict format - need to create model architecture
                     from torchvision.models import densenet121
                     model = densenet121(weights=None)
                     num_ftrs = model.classifier.in_features
@@ -134,15 +179,15 @@ class PraxiaAI:
                     model.load_state_dict(loaded_obj)
                     self.densenet_model = model
                 else:
-                    # It's a full model
+                    # Complete model format
                     self.densenet_model = loaded_obj
                 
                 self.densenet_model.eval()
-                logger.info("DenseNet model loaded successfully")
+                logger.info("DenseNet model loaded and ready for inference")
+                
             except Exception as e:
                 logger.error("Error loading DenseNet model: %s", str(e))
-            
-                # Try alternative loading method
+                # Create development fallback
                 try:
                     from torchvision.models import densenet121
                     model = densenet121(weights=None)
@@ -150,41 +195,51 @@ class PraxiaAI:
                     model.classifier = torch.nn.Linear(num_ftrs, 3)
                     self.densenet_model = model
                     self.densenet_model.eval()
-                    logger.info("Created fallback DenseNet model")
+                    logger.info("Using development fallback model")
                 except Exception as e2:
-                    logger.error("Error creating fallback model: %s", str(e2))
+                    logger.error("Failed to create any model: %s", str(e2))
                     self.densenet_model = None
+                    
         except Exception as e:
-            logger.error("Error initializing DenseNet model: %s", str(e))
+            logger.error("Critical error in model initialization: %s", str(e))
             self.densenet_model = None
 
     def _get_latest_health_data(self):
         """
-        Get the latest health data from cache or external sources
+        Retrieve and cache the latest health data from multiple sources.
+        
+        Aggregates data from:
+        - WHO and CDC health news
+        - Medical research trends
+        - Cached data for performance
+        
+        Returns:
+            dict: Structured health data with news and research trends
         """
         try:
-            # Try to get cached health data first
+            # Check cache first for performance
             cached_data = cache.get('latest_health_data')
             if cached_data:
-                logger.info("Using cached health data")
+                logger.info("Using cached health data for optimal performance")
                 return cached_data
             
-            # If no cached data, create a basic health data structure
+            # Build fresh health data structure
             health_data = {
                 'health_news': [],
                 'research_trends': {},
                 'last_updated': datetime.now().isoformat()
             }
             
-            # Try to get latest health news with improved methods
+            # Fetch latest health news from reliable sources
             try:
                 health_news = self._get_health_news_comprehensive(source='all', limit=3)
                 health_data['health_news'] = health_news
+                logger.info(f"Retrieved {len(health_news)} health news articles")
             except Exception as e:
-                logger.warning(f"Failed to get health news: {str(e)}")
+                logger.warning(f"Health news retrieval failed: {str(e)}")
                 health_data['health_news'] = []
             
-            # Try to get research trends for common topics
+            # Gather research trends for common medical topics
             try:
                 research_topics = ["COVID-19", "heart disease", "diabetes"]
                 research_data = {}
@@ -192,21 +247,22 @@ class PraxiaAI:
                     try:
                         research_data[topic] = self.get_medical_research(query=topic, limit=1)
                     except Exception as e:
-                        logger.warning(f"Failed to get research for {topic}: {str(e)}")
+                        logger.warning(f"Research retrieval failed for {topic}: {str(e)}")
                         research_data[topic] = []
                 health_data['research_trends'] = research_data
+                logger.info(f"Retrieved research trends for {len(research_topics)} topics")
             except Exception as e:
-                logger.warning(f"Failed to get research trends: {str(e)}")
+                logger.warning(f"Research trends retrieval failed: {str(e)}")
                 health_data['research_trends'] = {}
             
-            # Cache the health data for 6 hours
+            # Cache for 6 hours to balance freshness and performance
             cache.set('latest_health_data', health_data, 60 * 60 * 6)
-            logger.info("Health data updated and cached")
+            logger.info("Health data updated and cached successfully")
             return health_data
             
         except Exception as e:
-            logger.error(f"Error getting latest health data: {str(e)}")
-            # Return basic structure if everything fails
+            logger.error(f"Critical error in health data retrieval: {str(e)}")
+            # Return safe fallback structure
             return {
                 'health_news': [],
                 'research_trends': {},
@@ -214,10 +270,19 @@ class PraxiaAI:
             }
 
     def _build_user_context(self, user_profile):
+        """
+        Build personalized context string from user profile data.
+        
+        Args:
+            user_profile (dict): User's medical and demographic information
+            
+        Returns:
+            str: Formatted context string for AI processing
+        """
         if not user_profile:
             return ""
         
-        logger.info("Building context with user profile", 
+        logger.info("Building personalized user context", 
                     profile_data=json.dumps({k: v for k, v in user_profile.items() if v}))
         
         context = f"Patient information: "
@@ -236,19 +301,28 @@ class PraxiaAI:
         if user_profile.get('medical_history'):
             context += f"Medical history: {user_profile.get('medical_history')}. "
         
-        logger.info("Built user context", context=context)
+        logger.info("User context built successfully", context_length=len(context))
         return context
 
     def _extract_medical_topic(self, symptoms: str, user_profile: Dict[str, Any] = None) -> str:
         """
-        Extract a concise medical topic from symptoms for targeted searches
+        Extract a focused medical topic from symptoms for targeted research.
+        
+        Uses NLP techniques to categorize symptoms and create targeted search queries.
+        
+        Args:
+            symptoms (str): User's symptom description
+            user_profile (dict): User demographic data for context
+            
+        Returns:
+            str: Extracted medical topic for research queries
         """
         try:
-            # Clean and prepare the symptoms text
+            # Clean and normalize symptom text
             cleaned_symptoms = re.sub(r'[^\w\s]', ' ', symptoms.lower())
             cleaned_symptoms = ' '.join(cleaned_symptoms.split())
             
-            # Common medical terms and their categories
+            # Medical symptom categorization system
             symptom_keywords = {
                 'respiratory': ['cough', 'breathing', 'chest pain', 'shortness of breath', 'wheezing', 'phlegm', 'runny nose', 'congestion'],
                 'cardiovascular': ['chest pain', 'heart palpitations', 'dizziness', 'fainting'],
@@ -259,17 +333,17 @@ class PraxiaAI:
                 'systemic': ['fever', 'fatigue', 'weight loss', 'weight gain', 'night sweats']
             }
             
-            # Find matching categories
+            # Find matching medical categories
             matched_categories = []
             for category, keywords in symptom_keywords.items():
                 if any(keyword in cleaned_symptoms for keyword in keywords):
                     matched_categories.append(category)
             
-            # Generate topic based on matched categories and key symptoms
+            # Generate targeted topic based on matches
             if matched_categories:
                 primary_category = matched_categories[0]
                 
-                # Extract key symptoms for the topic
+                # Extract key symptoms for precision
                 key_symptoms = []
                 for category, keywords in symptom_keywords.items():
                     if category in matched_categories:
@@ -277,11 +351,11 @@ class PraxiaAI:
                             if keyword in cleaned_symptoms:
                                 key_symptoms.append(keyword)
                 
-                # Limit to top 3 most relevant symptoms
+                # Limit to top 3 symptoms for focused research
                 topic_symptoms = key_symptoms[:3]
                 topic = f"{primary_category} {' '.join(topic_symptoms)}"
                 
-                # Add demographic context if available
+                # Add demographic context for personalization
                 if user_profile:
                     if user_profile.get('age'):
                         age = int(user_profile['age'])
@@ -293,9 +367,10 @@ class PraxiaAI:
                     if user_profile.get('gender') in ['male', 'female']:
                         topic = f"{user_profile['gender']} {topic}"
                 
+                logger.info("Medical topic extracted successfully", topic=topic)
                 return topic
             else:
-                # Fallback: extract key medical terms
+                # Fallback: extract any medical terms
                 medical_terms = re.findall(r'\b(?:pain|ache|fever|cough|fatigue|nausea|dizziness|headache|rash|swelling)\b', cleaned_symptoms)
                 if medical_terms:
                     return ' '.join(medical_terms[:3])
@@ -303,21 +378,36 @@ class PraxiaAI:
                     return "general medical consultation"
                     
         except Exception as e:
-            logger.error("Error extracting medical topic", error=str(e))
+            logger.error("Error in medical topic extraction", error=str(e))
             return "general medical consultation"
 
     def _preprocess_symptoms(self, symptoms):
+        """
+        Clean and normalize user symptom input for processing.
+        
+        Handles:
+        - Input validation and sanitization
+        - Greeting removal
+        - Length normalization
+        - Character encoding issues
+        
+        Args:
+            symptoms (str): Raw user input
+            
+        Returns:
+            str: Cleaned and normalized symptom description
+        """
         if not symptoms or len(symptoms.strip()) < 3:
             return "general health inquiry"
         
         try:
-            # Clean the input more safely
+            # Basic sanitization
             cleaned = str(symptoms).replace('<', '').replace('>', '').strip()
             
-            # Remove problematic characters that might cause separator issues
+            # Remove problematic characters that might cause issues
             cleaned = re.sub(r'[^\w\s.,;:!?()-]', ' ', cleaned)
             
-            # Handle greetings and extract the actual symptoms
+            # Handle common greetings and extract actual symptoms
             greeting_phrases = ["hey praxia", "hi praxia", "hello", "greetings"]
             lower_symptoms = cleaned.lower()
             
@@ -326,11 +416,11 @@ class PraxiaAI:
                     cleaned = cleaned[len(phrase):].lstrip(" ,.;:!?")
                     break
             
-            # Make sure we have valid content
+            # Validate remaining content
             if not cleaned or len(cleaned.strip()) < 3:
                 return "general health inquiry"
             
-            # Normalize whitespace and quotes
+            # Normalize quotes and whitespace
             cleaned = cleaned.replace("'", "'").replace(""", '"').replace(""", '"')
             cleaned = cleaned.rstrip("'\"")
             
@@ -340,23 +430,41 @@ class PraxiaAI:
             # Remove excessive whitespace
             cleaned = ' '.join(cleaned.split()) 
             
-            # Limit length to prevent overly long queries
+            # Prevent overly long queries for performance
             if len(cleaned) > 500:
                 cleaned = cleaned[:500] + "..."
             
             return cleaned.strip() if cleaned.strip() else "general health inquiry"
             
         except Exception as e:
-            logger.error("Error preprocessing symptoms", error=str(e), symptoms=str(symptoms)[:50])
+            logger.error("Error in symptom preprocessing", error=str(e), symptoms=str(symptoms)[:50])
             return "general health inquiry"
 
     def diagnose_symptoms(self, symptoms, user_profile=None, chat_topic=None):
+        """
+        Main symptom diagnosis method using AI and medical research.
+        
+        Process:
+        1. Preprocess and validate symptoms
+        2. Extract medical topic for targeted research
+        3. Retrieve relevant medical research
+        4. Generate AI-powered diagnosis
+        5. Cache results for performance
+        
+        Args:
+            symptoms (str): User's symptom description
+            user_profile (dict): User's medical profile
+            chat_topic (str): Existing chat context
+            
+        Returns:
+            dict: Comprehensive diagnosis with conditions, advice, and research
+        """
         try:
             processed_symptoms = self._preprocess_symptoms(symptoms)
         
-            # Log whether user profile is being used
+            # Log diagnostic context for monitoring
             if user_profile:
-                logger.info("Diagnosing with user profile", 
+                logger.info("Starting diagnosis with user profile", 
                             has_gender=bool(user_profile.get('gender')),
                             has_age=bool(user_profile.get('age')),
                             symptoms=processed_symptoms[:30],
@@ -364,32 +472,33 @@ class PraxiaAI:
             else:
                 logger.warning("Diagnosing without user profile", symptoms=processed_symptoms[:30])
 
-            # IMPROVED: Use chat_topic as PRIMARY source if available and meaningful
+            # Use existing chat topic if meaningful, otherwise extract new one
             if chat_topic and chat_topic != "New Chat" and len(chat_topic.strip()) > 3:
                 medical_topic = chat_topic.strip()
-                logger.info("Using existing chat topic for targeted search", topic=medical_topic)
+                logger.info("Using existing chat topic for continuity", topic=medical_topic)
             else:
                 medical_topic = self._extract_medical_topic(processed_symptoms, user_profile)
                 logger.info("Extracted new medical topic", topic=medical_topic)
         
-            # Use the medical topic as the PRIMARY research query
+            # Check cache for performance optimization
             cache_key = f"diagnosis_{hash(processed_symptoms)}_{hash(str(user_profile))}_{hash(medical_topic)}"
             cached_result = cache.get(cache_key)
             if cached_result:
-                logger.info("Returning cached diagnosis", symptoms=processed_symptoms[:30])
+                logger.info("Returning cached diagnosis for performance", symptoms=processed_symptoms[:30])
                 return cached_result
 
+            # Build user context and get health data
             context = self._build_user_context(user_profile)
             health_data = self._get_latest_health_data()
             
-            # ENHANCED: Create more targeted research queries using the precise topic
+            # Create targeted research queries based on medical topic
             primary_research_queries = [
                 medical_topic,  # Exact topic match
                 f"{medical_topic} diagnosis",
                 f"{medical_topic} treatment guidelines",
             ]
             
-            # Add user-specific refinements to the EXACT topic
+            # Add user-specific refinements for personalization
             if user_profile:
                 if user_profile.get('age'):
                     age = int(user_profile['age'])
@@ -400,6 +509,7 @@ class PraxiaAI:
                 
                 if user_profile.get('country'):
                     country = user_profile['country'].lower()
+                    # Regional medical considerations
                     regional_queries = {
                         'kenya': f"{medical_topic} tropical medicine",
                         'nigeria': f"{medical_topic} tropical diseases",
@@ -410,27 +520,27 @@ class PraxiaAI:
                     if country in regional_queries:
                         primary_research_queries.append(regional_queries[country])
             
-            # OPTIMIZED: Use ONLY the most relevant queries (3 max) for speed
+            # Optimize query count for performance (max 3 queries)
             final_queries = primary_research_queries[:3]
             
-            # Get research data using the medical topic with circuit breaker protection
+            # Retrieve medical research with circuit breaker protection
             all_research = []
             for i, query in enumerate(final_queries):
                 try:
                     research = self.get_medical_research(query, limit=2)
                     all_research.extend(research)
-                    logger.info("Retrieved research for precise topic query", 
+                    logger.info("Retrieved research for targeted query", 
                                query=query, count=len(research), priority=i+1)
                 except Exception as e:
                     logger.warning("Research query failed, using fallback", 
                                   query=query, error=str(e))
-                    # Use circuit breaker fallback
+                    # Use circuit breaker fallback for reliability
                     from ..circuit_breaker import pubmed_fallback
                     fallback_research = pubmed_fallback(query, 2)
                     all_research.extend(fallback_research)
                     continue
             
-            # Remove duplicates and limit results
+            # Remove duplicates and limit results for performance
             seen_titles = set()
             filtered_research = []
             for article in all_research:
@@ -439,10 +549,10 @@ class PraxiaAI:
                     seen_titles.add(title)
                     filtered_research.append(article)
             
-            # Filter research results based on user profile relevance
+            # Filter research by user profile relevance
             final_research = self._filter_research_by_relevance(filtered_research, user_profile, max_results=3)
             
-            # Build research context
+            # Build research context for AI processing
             research_context = ""
             if final_research:
                 research_context = f"Relevant medical research for {medical_topic}:\n"
@@ -450,6 +560,8 @@ class PraxiaAI:
                     research_context += f"{i+1}. {article.get('title', 'Untitled')} ({article.get('journal', 'Unknown')}): "
                     research_context += f"{article.get('abstract', 'No abstract')[:200]}...\n"
             
+            # Build health news context
+                        # Build health news context
             news_context = ""
             if 'health_news' in health_data and health_data['health_news']:
                 news_context = "Recent health news:\n"
@@ -457,6 +569,7 @@ class PraxiaAI:
                     news_context += f"{i+1}. {article.get('title', 'Untitled')} ({article.get('source', 'Unknown')}): "
                     news_context += f"{article.get('summary', 'No summary')[:150]}...\n"
 
+            # Create comprehensive AI prompt for diagnosis
             prompt = f"""You are Praxia, a medical AI assistant. {self.identity}
 
 {context}
@@ -470,7 +583,7 @@ Chat context: {chat_topic or 'General consultation'}
 {news_context}
 
 WHO guidelines recommend careful assessment of symptoms and considering local disease prevalence.
-Mayo Clinic emphasizes that symptom diagnosis should consider patient history and risk factors.
+Evidence-based medicine emphasizes that symptom diagnosis should consider patient history and risk factors.
 
 Analyze these symptoms and provide a response in JSON format with these keys:
 1. "conditions": [List of potential conditions, ordered by likelihood]
@@ -505,7 +618,7 @@ Your response must be valid JSON that can be parsed programmatically.
                     else:
                         raise
             
-                # Validate required fields
+                # Validate required fields for consistency
                 required_fields = ["conditions", "next_steps", "urgent", "advice", "clarification"]
                 for field in required_fields:
                     if field not in diagnosis_data:
@@ -517,7 +630,7 @@ Your response must be valid JSON that can be parsed programmatically.
                     "diagnosis": diagnosis_data,
                     "related_research": final_research,
                     "medical_topic": medical_topic,
-                    "search_queries_used": final_queries,  # Show which queries were used
+                    "search_queries_used": final_queries,
                     "disclaimer": "This information is for educational purposes only and not a substitute for professional medical advice."
                 }
                 cache.set(cache_key, result, self.cache_timeout)
@@ -551,7 +664,15 @@ Your response must be valid JSON that can be parsed programmatically.
             return self._get_fallback_diagnosis_response("general medical consultation")
 
     def _get_fallback_diagnosis_response(self, medical_topic):
-        """Get a safe fallback response when all else fails"""
+        """
+        Get a safe fallback response when all else fails.
+        
+        Args:
+            medical_topic (str): The medical topic being analyzed
+            
+        Returns:
+            dict: Safe fallback diagnosis response
+        """
         return {
             "diagnosis": {
                 "conditions": ["Unable to analyze symptoms at this time"],
@@ -566,7 +687,21 @@ Your response must be valid JSON that can be parsed programmatically.
 
     def _filter_research_by_relevance(self, research_results, user_profile=None, max_results=3):
         """
-        Filter and rank research results based on user profile relevance
+        Filter and rank research results based on user profile relevance.
+        
+        Scoring system considers:
+        - Age-specific research (pediatric, geriatric, adult)
+        - Gender-specific studies
+        - Regional disease patterns
+        - Allergy considerations
+        
+        Args:
+            research_results (list): List of research articles
+            user_profile (dict): User's demographic and medical data
+            max_results (int): Maximum number of results to return
+            
+        Returns:
+            list: Filtered and ranked research results
         """
         if not research_results or not user_profile:
             return research_results[:max_results]
@@ -579,7 +714,7 @@ Your response must be valid JSON that can be parsed programmatically.
             abstract_lower = article.get('abstract', '').lower()
             content = title_lower + ' ' + abstract_lower
             
-            # Age relevance
+            # Age relevance scoring
             if user_profile.get('age'):
                 age = int(user_profile['age'])
                 if age < 18 and any(term in content for term in ['pediatric', 'children', 'adolescent']):
@@ -589,13 +724,13 @@ Your response must be valid JSON that can be parsed programmatically.
                 elif 18 <= age <= 65 and any(term in content for term in ['adult', 'working age']):
                     score += 2
             
-            # Gender relevance
+            # Gender relevance scoring
             if user_profile.get('gender'):
                 gender = user_profile['gender'].lower()
                 if gender in ['male', 'female'] and gender in content:
                     score += 2
             
-            # Country/regional relevance
+            # Country/regional relevance scoring
             if user_profile.get('country'):
                 country = user_profile['country'].lower()
                 if country in content:
@@ -617,7 +752,7 @@ Your response must be valid JSON that can be parsed programmatically.
                                 score += 1
                         break
             
-            # Allergy relevance
+            # Allergy relevance scoring
             if user_profile.get('allergies'):
                 allergies = user_profile['allergies'].lower()
                 if any(allergy.strip() in content for allergy in allergies.split(',') if allergy.strip()):
@@ -631,39 +766,51 @@ Your response must be valid JSON that can be parsed programmatically.
 
     def get_medical_research(self, query, limit=5):
         """
-        Enhanced medical research retrieval with circuit breaker protection
+        Enhanced medical research retrieval with circuit breaker protection.
+        
+        Features:
+        - PubMed integration for peer-reviewed research
+        - Intelligent query optimization
+        - Caching for performance
+        - Circuit breaker fallback protection
+        
+        Args:
+            query (str): Medical research query
+            limit (int): Maximum number of results
+            
+        Returns:
+            list: List of research articles with metadata
         """
         cache_key = f"research_{hash(query)}_{limit}"
         cached_result = cache.get(cache_key)
         if cached_result:
             return cached_result
         try:
-            # Ensure query is a string and not None
+            # Ensure query is valid and properly formatted
             if not query or not isinstance(query, str):
                 query = "general medical research"
             
-            # Clean and limit query length
+            # Clean and limit query length for optimal performance
             query = query.strip()
-            if len(query) > 100:  # Limit query length
+            if len(query) > 100:
                 query = query[:100]
             
-            # Create a more targeted PubMed search
+            # Create targeted PubMed search with filters
             search_term = f"{query} AND (Review[ptyp] OR Clinical Trial[ptyp] OR Case Reports[ptyp])"
             
             logger.info("Medical research query", search_term=search_term)
             
-            # Use circuit breaker protection
-            from ..circuit_breaker import safe_pubmed_query
+            # Execute PubMed query with error handling
             try:
                 results = self.pubmed_client.query(search_term, max_results=limit)
                 articles = []
                 for article in results:
-                    # Safely handle None values
+                    # Safely handle None values and extract metadata
                     title = getattr(article, 'title', None) or "Research Article"
                     authors = getattr(article, 'authors', None)
                     journal = getattr(article, 'journal', None) or "Medical Journal"
                     
-                                        # Safely process authors
+                    # Safely process authors list
                     author_str = "Unknown"
                     if authors and isinstance(authors, list):
                         try:
@@ -675,7 +822,7 @@ Your response must be valid JSON that can be parsed programmatically.
                         except (AttributeError, TypeError, IndexError):
                             author_str = "Unknown"
                     
-                    # Safely handle other attributes
+                    # Safely handle publication date and other metadata
                     pub_date = getattr(article, 'publication_date', None)
                     pub_date_str = str(pub_date) if pub_date else "Unknown"
                     
@@ -717,7 +864,20 @@ Your response must be valid JSON that can be parsed programmatically.
 
     def analyze_diet(self, dietary_info, user_profile=None):
         """
-        Analyze user's dietary information and provide recommendations
+        Analyze user's dietary information and provide personalized recommendations.
+        
+        Features:
+        - Nutritional assessment
+        - Personalized recommendations based on user profile
+        - Health considerations
+        - Meal suggestions
+        
+        Args:
+            dietary_info (str): User's dietary information
+            user_profile (dict): User's demographic and health data
+            
+        Returns:
+            dict: Comprehensive dietary analysis and recommendations
         """
         try:
             cache_key = f"diet_analysis_{hash(dietary_info)}_{hash(str(user_profile))}"
@@ -777,7 +937,20 @@ Your response must be valid JSON that can be parsed programmatically.
 
     def analyze_medication(self, medication_info, user_profile=None):
         """
-        Analyze medication information and check for potential interactions
+        Analyze medication information and check for potential interactions.
+        
+        Features:
+        - Drug interaction checking
+        - Side effect monitoring
+        - Personalized precautions
+        - Safety recommendations
+        
+        Args:
+            medication_info (str): User's medication information
+            user_profile (dict): User's demographic and health data
+            
+        Returns:
+            dict: Comprehensive medication analysis and safety information
         """
         try:
             cache_key = f"medication_analysis_{hash(medication_info)}_{hash(str(user_profile))}"
@@ -835,6 +1008,21 @@ Your response must be valid JSON that can be parsed programmatically.
             }
 
     def analyze_xray(self, image_data):
+        """
+        Analyze X-ray images using DenseNet deep learning model.
+        
+        Features:
+        - DenseNet121 architecture for medical imaging
+        - Multi-class classification (fracture, tumor, pneumonia, normal)
+        - Confidence scoring
+        - AI-powered interpretation
+        
+        Args:
+            image_data: X-ray image data (file path or binary data)
+            
+        Returns:
+            dict: Comprehensive X-ray analysis with findings and recommendations
+        """
         if not hasattr(self, 'densenet_model') or self.densenet_model is None:
             logger.warning("DenseNet model not initialized")
             return {
@@ -862,19 +1050,25 @@ Your response must be valid JSON that can be parsed programmatically.
                 logger.info("Returning cached X-ray analysis")
                 return cached_result
 
+            # Prepare image transformations for DenseNet input
             transforms = Compose([
                 LoadImage(image_only=True),
                 EnsureChannelFirst(),
                 ScaleIntensity(),
                 Resize((224, 224)),
             ])
+            
+            # Process image data
             if isinstance(image_data, str):
                 image = transforms(image_data)
             else:
                 image = Image.open(BytesIO(image_data))
                 image = np.array(image.convert('L'))
                 image = transforms(image)
+            
             image = image.unsqueeze(0).to(self.device)
+            
+            # Run inference with DenseNet model
             with torch.no_grad():
                 densenet_output = self.densenet_model(image)
                 densenet_probs = torch.softmax(densenet_output, dim=1)
@@ -882,6 +1076,8 @@ Your response must be valid JSON that can be parsed programmatically.
                 tumor_prob = densenet_probs[0, 1].item()
                 pneumonia_prob = densenet_probs[0, 2].item()
                 normal_prob = max(0, min(1.0, 1.0 - (fracture_prob + tumor_prob + pneumonia_prob)))
+            
+            # Process results and generate findings
             findings = []
             confidence_scores = {
                 "normal": round(normal_prob * 100, 2),
@@ -889,6 +1085,7 @@ Your response must be valid JSON that can be parsed programmatically.
                 "fracture": round(fracture_prob * 100, 2),
                 "tumor": round(tumor_prob * 100, 2)
             }
+            
             detected_conditions = {}
             for condition, score in confidence_scores.items():
                 if score > 30:
@@ -899,10 +1096,15 @@ Your response must be valid JSON that can be parsed programmatically.
                         confidence_level = "moderate"
                     detected_conditions[condition] = confidence_level
                     findings.append(f"Potential {condition} detected with {confidence_level} confidence ({score}%)")
+            
             if not detected_conditions or confidence_scores["normal"] > 60:
                 findings.append("No significant abnormalities detected")
                 detected_conditions["normal"] = "high" if confidence_scores["normal"] > 80 else "moderate"
+            
+            # Get related research for detected conditions
             research = self.get_medical_research("X-ray diagnosis " + " ".join(detected_conditions.keys()), limit=2)
+            
+            # Generate detailed AI interpretation
             prompt = f"""You are Praxia, a medical AI assistant specialized in X-ray analysis. {self.identity}
 
 I have analyzed an X-ray image with the following findings:
@@ -926,7 +1128,8 @@ Your response must be valid JSON that can be parsed programmatically.
                     "possible_conditions": list(detected_conditions.keys()),
                     "recommendations": ["Consult with a radiologist for professional interpretation"],
                     "limitations": ["AI analysis should be confirmed by a healthcare professional"]
-                }
+                                    }
+            
             result = {
                 "analysis": "X-ray analysis completed successfully",
                 "findings": findings,
@@ -936,6 +1139,7 @@ Your response must be valid JSON that can be parsed programmatically.
                 "related_research": research,
                 "disclaimer": "This is an AI interpretation and should be confirmed by a radiologist."
             }
+            
             cache.set(cache_key, result, self.cache_timeout)
             logger.info("X-ray analysis completed successfully",
                         conditions=list(detected_conditions.keys()),
@@ -946,7 +1150,17 @@ Your response must be valid JSON that can be parsed programmatically.
             return {"error": str(e), "message": "Unable to process X-ray at this time."}
 
     def _call_together_ai_with_circuit_breaker(self, prompt):
-        """Call Together AI with circuit breaker protection"""
+        """
+        Call Together AI with circuit breaker protection.
+        
+        Provides fallback functionality when the AI service is unavailable.
+        
+        Args:
+            prompt (str): The prompt to send to the AI
+            
+        Returns:
+            str: AI response or fallback response
+        """
         try:
             from ..circuit_breaker import together_ai_breaker
             return together_ai_breaker.call(self._call_together_ai, prompt)
@@ -957,6 +1171,18 @@ Your response must be valid JSON that can be parsed programmatically.
             return together_ai_fallback(prompt)
 
     def _call_together_ai(self, prompt):
+        """
+        Direct call to Together AI API.
+        
+        Args:
+            prompt (str): The prompt to send
+            
+        Returns:
+            str: AI response text
+            
+        Raises:
+            Exception: If API call fails
+        """
         url = "https://api.together.xyz/v1/completions"
         payload = {
             "model": self.together_model,
@@ -991,7 +1217,21 @@ Your response must be valid JSON that can be parsed programmatically.
             raise Exception(f"Unexpected error: {str(e)}")
 
     def _get_health_news_comprehensive(self, source='all', limit=5):
-        """Comprehensive health news retrieval with enhanced error handling"""
+        """
+        Comprehensive health news retrieval with enhanced error handling.
+        
+        Strategy:
+        1. Try RSS feeds first (WHO, CDC)
+        2. Use web scraping as fallback
+        3. Provide enhanced fallback content if all else fails
+        
+        Args:
+            source (str): News source ('who', 'cdc', 'all')
+            limit (int): Maximum number of articles to retrieve
+            
+        Returns:
+            list: List of health news articles
+        """
         cache_key = f"health_news_comprehensive_{source}_{limit}"
         cached_result = cache.get(cache_key)
         if cached_result:
@@ -1001,12 +1241,12 @@ Your response must be valid JSON that can be parsed programmatically.
         try:
             articles = []
             
-            # Strategy 1: Try RSS feeds first with timeout using ThreadPoolExecutor
+            # Strategy 1: Try RSS feeds first with timeout protection
             try:
                 with ThreadPoolExecutor(max_workers=1) as executor:
                     future = executor.submit(self._get_health_news_from_rss_direct, source, limit)
                     try:
-                        rss_articles = future.result(timeout=15)  # 15 second timeout
+                        rss_articles = future.result(timeout=10)  # Reduced timeout for faster response
                         if rss_articles:
                             articles.extend(rss_articles)
                             logger.info("Retrieved articles from RSS feeds", count=len(rss_articles))
@@ -1034,7 +1274,7 @@ Your response must be valid JSON that can be parsed programmatically.
                 fallback_articles = self._get_enhanced_fallback_health_news(source, limit - len(articles))
                 articles.extend(fallback_articles)
             
-            # Process and clean articles quickly
+            # Process and clean articles for consistency
             processed_articles = []
             seen_titles = set()
             
@@ -1065,7 +1305,7 @@ Your response must be valid JSON that can be parsed programmatically.
                         'published_date': published_date
                     }
                     
-                    # Generate summary quickly
+                    # Generate summary efficiently
                     content = processed_article.get('content', '')
                     if content and len(content) > 200:
                         processed_article['summary'] = content[:200] + "..."
@@ -1082,8 +1322,8 @@ Your response must be valid JSON that can be parsed programmatically.
                     logger.warning(f"Error processing article: {str(e)}")
                     continue
             
-            # Cache for 2 hours for faster subsequent requests
-            cache.set(cache_key, processed_articles, 60 * 60 * 2)
+            # Cache for 1 hour for faster subsequent requests
+            cache.set(cache_key, processed_articles, 60 * 60 * 1)
             logger.info("Health news retrieval completed", 
                        total_articles=len(processed_articles), 
                        source=source, 
@@ -1095,10 +1335,24 @@ Your response must be valid JSON that can be parsed programmatically.
             return self._get_enhanced_fallback_health_news(source, limit)
 
     def _get_health_news_from_rss_direct(self, source='all', limit=3):
-        """Direct RSS feed retrieval without circuit breaker interference"""
+        """
+        Direct RSS feed retrieval from WHO and CDC sources.
+        
+        Optimized for speed and reliability:
+        - Reduced timeouts
+        - Better error handling
+        - Header rotation to avoid blocking
+        
+        Args:
+            source (str): News source ('who', 'cdc', 'all')
+            limit (int): Maximum articles per source
+            
+        Returns:
+            list: List of news articles from RSS feeds
+        """
         articles = []
     
-        # Updated RSS sources with more alternatives
+        # Reliable RSS sources (Mayo Clinic removed for performance)
         rss_sources = {
             'who': [
                 'https://www.who.int/rss-feeds/news-english.xml',
@@ -1110,14 +1364,9 @@ Your response must be valid JSON that can be parsed programmatically.
                 'https://www.cdc.gov/media/rss/index.html',
                 'https://blogs.cdc.gov/feed/'
             ],
-            'mayo': [
-                'https://newsnetwork.mayoclinic.org/feed/',
-                'https://newsnetwork.mayoclinic.org/category/diseases-conditions/feed/',
-                'https://www.mayoclinic.org/rss'
-            ],
         }
     
-        # Better headers with rotation
+        # Optimized headers for better success rate
         header_options = [
             {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -1144,12 +1393,12 @@ Your response must be valid JSON that can be parsed programmatically.
                     try:
                         import time
                         import random
-                        time.sleep(random.uniform(0.5, 1.5))  # Random delay
+                        time.sleep(random.uniform(0.2, 0.5))  # Reduced delay for speed
                         
-                        # Rotate headers
+                        # Rotate headers to avoid blocking
                         headers = header_options[i % len(header_options)]
                         
-                        response = requests.get(url, timeout=15, headers=headers)
+                        response = requests.get(url, timeout=8, headers=headers)  # Reduced timeout
                         response.raise_for_status()
                         
                         feed = feedparser.parse(response.content)
@@ -1162,7 +1411,7 @@ Your response must be valid JSON that can be parsed programmatically.
                         source_articles = []
                         for entry in feed.entries[:articles_per_source]:
                             try:
-                                # Fix date parsing
+                                # Parse date efficiently
                                 published_date = self._parse_rss_date(entry.get('published', ''))
                                 
                                 article = {
@@ -1193,7 +1442,17 @@ Your response must be valid JSON that can be parsed programmatically.
         return articles
 
     def _parse_rss_date(self, date_string):
-        """Parse RSS date string and convert to YYYY-MM-DD format"""
+        """
+        Parse RSS date string and convert to YYYY-MM-DD format.
+        
+        Handles various RSS date formats efficiently.
+        
+        Args:
+            date_string (str): Raw date string from RSS feed
+            
+        Returns:
+            str: Formatted date string (YYYY-MM-DD)
+        """
         if not date_string:
             return datetime.now().strftime("%Y-%m-%d")
         
@@ -1250,9 +1509,20 @@ Your response must be valid JSON that can be parsed programmatically.
             logger.error(f"Error parsing date {date_string}: {str(e)}")
             return datetime.now().strftime("%Y-%m-%d")
 
-
     def _scrape_health_news_direct(self, source='all', limit=3):
-        """Direct web scraping without circuit breaker interference"""
+        """
+        Direct web scraping from WHO and CDC websites.
+        
+        Fallback method when RSS feeds are unavailable.
+        Optimized for speed and reliability.
+        
+        Args:
+            source (str): News source ('who', 'cdc', 'all')
+            limit (int): Maximum articles to scrape
+            
+        Returns:
+            list: List of scraped news articles
+        """
         articles = []
         
         headers = {
@@ -1267,8 +1537,6 @@ Your response must be valid JSON that can be parsed programmatically.
             sources_to_try.append(('who', self._scrape_who_news_improved))
         if source in ['cdc', 'all']:
             sources_to_try.append(('cdc', self._scrape_cdc_news_improved))
-        if source in ['mayo', 'all']:
-            sources_to_try.append(('mayo', self._scrape_mayo_news_improved))
         
         articles_per_source = max(1, limit // len(sources_to_try)) if len(sources_to_try) > 1 else limit
         
@@ -1286,10 +1554,22 @@ Your response must be valid JSON that can be parsed programmatically.
         return articles
 
     def _get_enhanced_fallback_health_news(self, source='all', limit=3):
-        """Enhanced fallback with more diverse content"""
+        """
+        Enhanced fallback health news when all other methods fail.
+        
+        Provides reliable, up-to-date health information from WHO and CDC.
+        Content is curated to be relevant and informative.
+        
+        Args:
+            source (str): News source preference
+            limit (int): Number of articles needed
+            
+        Returns:
+            list: List of fallback health news articles
+        """
         current_date = datetime.now().strftime("%Y-%m-%d")
         
-        # Create source-specific content
+        # WHO health news content
         who_articles = [
             {
                 "title": "WHO Global Health Security: Strengthening Pandemic Preparedness",
@@ -1309,6 +1589,7 @@ Your response must be valid JSON that can be parsed programmatically.
             }
         ]
         
+        # CDC health news content
         cdc_articles = [
             {
                 "title": "CDC Disease Prevention Guidelines: Updated Recommendations",
@@ -1328,217 +1609,34 @@ Your response must be valid JSON that can be parsed programmatically.
             }
         ]
         
-        mayo_articles = [
-            {
-                "title": "Mayo Clinic Research: Advances in Personalized Medicine",
-                "source": "Mayo Clinic",
-                "url": "https://www.mayoclinic.org/",
-                "summary": "Latest research focuses on personalized treatment approaches and precision medicine.",
-                "content": "Mayo Clinic researchers continue advancing personalized medicine through innovative diagnostic tools and targeted treatment strategies tailored to individual patient needs.",
-                "published_date": current_date
-            },
-            {
-                "title": "Mayo Clinic Patient Care Excellence: Integrated Healthcare Approach",
-                "source": "Mayo Clinic",
-                "url": "https://www.mayoclinic.org/",
-                "summary": "Mayo Clinic's integrated approach combines cutting-edge research with compassionate patient care.",
-                "content": "Mayo Clinic's model of care integrates clinical expertise, research innovation, and education to provide comprehensive, patient-centered healthcare services.",
-                "published_date": current_date
-            }
-        ]
-        
-        # Select articles based on source
+        # Select articles based on source preference
         if source == 'who':
             selected_articles = who_articles[:limit]
         elif source == 'cdc':
             selected_articles = cdc_articles[:limit]
-        elif source == 'mayo':
-            selected_articles = mayo_articles[:limit]
         else:  # 'all' or other
-            all_articles = who_articles + cdc_articles + mayo_articles
-            # Distribute evenly across sources
+            # Distribute evenly across WHO and CDC
             selected_articles = []
-            articles_per_source = max(1, limit // 3)
+            articles_per_source = max(1, limit // 2)
             selected_articles.extend(who_articles[:articles_per_source])
             selected_articles.extend(cdc_articles[:articles_per_source])
-            selected_articles.extend(mayo_articles[:articles_per_source])
             selected_articles = selected_articles[:limit]
         
         return selected_articles
 
-    def _get_health_news_from_rss(self, source='all', limit=3):
-        """Get health news from RSS feeds with improved error handling"""
-        articles = []
-
-        # Updated RSS sources with alternatives
-        rss_sources = {
-            'who': 'https://www.who.int/rss-feeds/news-english.xml',
-            'cdc': 'https://tools.cdc.gov/api/v2/resources/media/316422.rss',
-            'mayo': [
-                'https://newsnetwork.mayoclinic.org/feed/',  # Try main feed first
-                'https://www.mayoclinic.org/rss',  # Alternative
-                'https://newsnetwork.mayoclinic.org/category/diseases-conditions/feed/'  # Fallback
-            ],
-        }
-
-        # Enhanced headers to look more like a real browser
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Accept': 'application/rss+xml, application/xml, text/xml, application/atom+xml, */*',
-            'Accept-Language': 'en-US,en;q=0.9',
-            'Accept-Encoding': 'gzip, deflate, br',
-            'Cache-Control': 'no-cache',
-            'Pragma': 'no-cache',
-            'Connection': 'keep-alive',
-            'Upgrade-Insecure-Requests': '1',
-            'Sec-Fetch-Dest': 'document',
-            'Sec-Fetch-Mode': 'navigate',
-            'Sec-Fetch-Site': 'none',
-            'DNT': '1'
-        }
-
-        sources_to_try = [source] if source != 'all' else list(rss_sources.keys())
-
-        for src in sources_to_try:
-            if src in rss_sources:
-                # Handle Mayo Clinic with multiple URLs
-                urls_to_try = rss_sources[src] if isinstance(rss_sources[src], list) else [rss_sources[src]]
-                
-                for url in urls_to_try:
-                    try:
-                        # Add delay between requests to avoid rate limiting
-                        import time
-                        time.sleep(1)
-                        
-                        # Use session for better connection handling
-                        import requests
-                        session = requests.Session()
-                        session.headers.update(headers)
-                        
-                        response = session.get(url, timeout=20, allow_redirects=True)
-                        response.raise_for_status()
-                        
-                        feed = feedparser.parse(response.content)
-                        
-                        # Check if feed is valid and has entries
-                        if hasattr(feed, 'bozo') and feed.bozo:
-                            logger.warning(f"RSS feed parsing issues for {src} at {url}: {feed.bozo_exception}")
-                            continue
-                        
-                        if not feed.entries:
-                            logger.warning(f"No entries found in RSS feed for {src} at {url}")
-                            continue
-                        
-                        # Successfully got articles
-                        for entry in feed.entries[:limit]:
-                            articles.append({
-                                'title': entry.get('title', 'Health News'),
-                                'source': src.upper(),
-                                'url': entry.get('link', '#'),
-                                'content': entry.get('description', 'Health information update'),
-                                'summary': entry.get('summary', entry.get('description', ''))[:200],
-                                'published_date': entry.get('published', '')
-                            })
-                        
-                        logger.info(f"Retrieved {len(feed.entries[:limit])} articles from {src} RSS at {url}")
-                        break  # Success, no need to try other URLs for this source
-                        
-                    except requests.exceptions.HTTPError as e:
-                        if e.response.status_code == 403:
-                            logger.warning(f"RSS feed access forbidden for {src} at {url} - trying alternative approach")
-                            continue
-                        else:
-                            logger.warning(f"HTTP error for {src} at {url}: {e}")
-                            continue
-                    except Exception as e:
-                        logger.warning(f"RSS feed failed for {src} at {url}", error=str(e))
-                        continue
-                
-                # If all URLs failed for Mayo, try web scraping as fallback
-                if src == 'mayo' and not any(article['source'] == 'MAYO' for article in articles):
-                    try:
-                        mayo_articles = self._scrape_mayo_news_improved(limit=limit, headers=headers)
-                        articles.extend(mayo_articles)
-                        logger.info(f"Used web scraping fallback for Mayo Clinic, got {len(mayo_articles)} articles")
-                    except Exception as e:
-                        logger.warning(f"Mayo Clinic web scraping fallback also failed: {e}")
-
-        return articles
-
-    def _get_health_news_from_apis(self, limit=3):
-        """Get health news from legitimate APIs"""
-        articles = []
-        
-        try:
-            # Try NewsAPI if available
-            news_api_key = getattr(settings, 'NEWS_API_KEY', None)
-            if news_api_key:
-                url = "https://newsapi.org/v2/top-headlines"
-                params = {
-                    'category': 'health',
-                    'apiKey': news_api_key,
-                    'pageSize': limit,
-                    'language': 'en'
-                }
-                
-                response = requests.get(url, params=params, timeout=10)
-                if response.status_code == 200:
-                    data = response.json()
-                    for article in data.get('articles', []):
-                        articles.append({
-                            'title': article.get('title', 'Health News'),
-                            'source': article.get('source', {}).get('name', 'News Source'),
-                            'url': article.get('url', '#'),
-                            'content': article.get('content', ''),
-                            'summary': article.get('description', '')[:200],
-                            'published_date': article.get('publishedAt', '')
-                        })
-                    logger.info(f"Retrieved {len(articles)} articles from NewsAPI")
-        except Exception as e:
-            logger.error("NewsAPI failed", error=str(e))
-        
-        return articles
-
-    def _scrape_health_news_fallback(self, source='all', limit=3):
-        """Fallback web scraping with improved error handling"""
-        articles = []
-        
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-            'Accept-Language': 'en-US,en;q=0.9',
-            'Accept-Encoding': 'gzip, deflate, br',
-            'DNT': '1',
-            'Connection': 'keep-alive',
-            'Upgrade-Insecure-Requests': '1',
-        }
-        
-        # Try with longer timeouts and better error handling
-        sources_to_try = []
-        if source in ['who', 'all']:
-            sources_to_try.append(('who', self._scrape_who_news_improved))
-        if source in ['cdc', 'all']:
-            sources_to_try.append(('cdc', self._scrape_cdc_news_improved))
-        if source in ['mayo', 'all']:
-            sources_to_try.append(('mayo', self._scrape_mayo_news_improved))
-        
-        for src_name, scrape_func in sources_to_try:
-            try:
-                logger.info(f"Attempting improved scraping from {src_name}")
-                src_articles = scrape_func(limit=max(1, limit // len(sources_to_try)), headers=headers)
-                if src_articles:
-                    articles.extend(src_articles)
-                    logger.info(f"Successfully retrieved {len(src_articles)} articles from {src_name}")
-            except Exception as e:
-                logger.warning(f"Improved scraping failed for {src_name}", error=str(e))
-                continue
-        
-        return articles
-
     def _scrape_who_news_improved(self, limit=3, headers=None):
-        """Improved WHO news scraping"""
+        """
+        Improved WHO news scraping with multiple URL attempts.
+        
+        Args:
+            limit (int): Maximum articles to retrieve
+            headers (dict): HTTP headers for requests
+            
+        Returns:
+            list: List of WHO news articles
+        """
         try:
-            # Try multiple WHO news URLs
+            # Multiple WHO news URLs for better success rate
             who_urls = [
                 "https://www.who.int/news",
                 "https://www.who.int/news-room/news",
@@ -1547,11 +1645,11 @@ Your response must be valid JSON that can be parsed programmatically.
             
             for url in who_urls:
                 try:
-                    response = requests.get(url, timeout=15, headers=headers)
+                    response = requests.get(url, timeout=10, headers=headers)
                     if response.status_code == 200:
                         soup = BeautifulSoup(response.text, 'html.parser')
                         
-                        # Try multiple selectors
+                        # Try multiple CSS selectors
                         selectors = [
                             '.list-view--item',
                             '.news-item',
@@ -1601,9 +1699,18 @@ Your response must be valid JSON that can be parsed programmatically.
         except Exception as e:
             logger.error(f"Error in improved WHO scraping: {str(e)}")
             return []
-
+                                
     def _scrape_cdc_news_improved(self, limit=3, headers=None):
-        """Improved CDC news scraping"""
+        """
+        Improved CDC news scraping with multiple URL attempts.
+        
+        Args:
+            limit (int): Maximum articles to retrieve
+            headers (dict): HTTP headers for requests
+            
+        Returns:
+            list: List of CDC news articles
+        """
         try:
             cdc_urls = [
                 "https://www.cdc.gov/media/index.html",
@@ -1613,7 +1720,7 @@ Your response must be valid JSON that can be parsed programmatically.
             
             for url in cdc_urls:
                 try:
-                    response = requests.get(url, timeout=15, headers=headers)
+                    response = requests.get(url, timeout=10, headers=headers)
                     if response.status_code == 200:
                         soup = BeautifulSoup(response.text, 'html.parser')
                         
@@ -1667,155 +1774,17 @@ Your response must be valid JSON that can be parsed programmatically.
             logger.error(f"Error in improved CDC scraping: {str(e)}")
             return []
 
-    def _scrape_mayo_news_improved(self, limit=3, headers=None):
-        """Improved Mayo Clinic news scraping with multiple strategies"""
-        try:
-            # Try multiple Mayo Clinic URLs with better headers
-            mayo_urls = [
-                "https://newsnetwork.mayoclinic.org/",
-                "https://www.mayoclinic.org/about-mayo-clinic/newsnetwork",
-                "https://newsnetwork.mayoclinic.org/category/diseases-conditions/",
-                "https://www.mayoclinic.org/healthy-lifestyle"
-            ]
-            
-            # Enhanced headers to avoid blocking
-            enhanced_headers = {
-                'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
-                'Accept-Language': 'en-US,en;q=0.9',
-                'Accept-Encoding': 'gzip, deflate, br',
-                'DNT': '1',
-                'Connection': 'keep-alive',
-                'Upgrade-Insecure-Requests': '1',
-                'Sec-Fetch-Dest': 'document',
-                'Sec-Fetch-Mode': 'navigate',
-                'Sec-Fetch-Site': 'none',
-                'Cache-Control': 'max-age=0',
-            }
-            
-            for url in mayo_urls:
-                try:
-                    # Add random delay to avoid being flagged
-                    import random
-                    import time
-                    time.sleep(random.uniform(2, 5))
-                    
-                    response = requests.get(url, timeout=20, headers=enhanced_headers)
-                    if response.status_code == 200:
-                        soup = BeautifulSoup(response.text, 'html.parser')
-                        
-                        # Try multiple selectors for different page layouts
-                        selectors = [
-                            '.content-item',
-                            '.news-item',
-                            '.post',
-                            'article',
-                            '.entry',
-                            '.card',
-                            '.story-item',
-                            '.article-card',
-                            '.news-card',
-                            '.content-card'
-                        ]
-                        
-                        news_items = []
-                        for selector in selectors:
-                            news_items = soup.select(selector)
-                            if news_items and len(news_items) >= 2:
-                                break
-                        
-                        if not news_items:
-                            logger.warning(f"No news items found at {url}")
-                            continue
-                        
-                        articles = []
-                        for item in news_items[:limit]:
-                            try:
-                                # Try multiple title selectors
-                                title_elem = item.select_one('h3 a, h2 a, .title a, .entry-title a, h1 a, .headline a, .title')
-                                if not title_elem:
-                                    title_elem = item.select_one('a')
-                                
-                                title = title_elem.text.strip() if title_elem else "Mayo Clinic Health Update"
-                                
-                                # Get article URL
-                                article_url = title_elem.get('href') if title_elem and title_elem.name == 'a' else url
-                                if article_url and not article_url.startswith('http'):
-                                    if article_url.startswith('/'):
-                                        article_url = f"https://newsnetwork.mayoclinic.org{article_url}"
-                                    else:
-                                        article_url = f"https://newsnetwork.mayoclinic.org/{article_url}"
-                                
-                                # Get date
-                                date_elem = item.select_one('.date, .publish-date, time, .entry-date, .published, .post-date')
-                                published_date = date_elem.text.strip() if date_elem else datetime.now().strftime("%Y-%m-%d")
-                                
-                                # Get content preview
-                                content_elem = item.select_one('.excerpt, .summary, .description, p, .content')
-                                content = content_elem.text.strip() if content_elem else "Mayo Clinic health information and medical guidance."
-                                
-                                # Clean up content
-                                content = ' '.join(content.split())[:500]
-                                
-                                articles.append({
-                                    "title": title,
-                                    "source": "Mayo Clinic",
-                                    "url": article_url,
-                                    "content": content,
-                                    "published_date": self._parse_rss_date(published_date)
-                                })
-                            except Exception as e:
-                                logger.warning(f"Error processing Mayo news item: {str(e)}")
-                                continue
-                        
-                        if articles:
-                            logger.info(f"Successfully scraped {len(articles)} articles from {url}")
-                            return articles
-                            
-                except requests.exceptions.RequestException as e:
-                    logger.warning(f"Failed to access {url}: {str(e)}")
-                    continue
-            
-            # If all scraping fails, return fallback content
-            logger.warning("All Mayo Clinic scraping attempts failed, using fallback content")
-            return self._get_mayo_fallback_content(limit)
-        
-        except Exception as e:
-            logger.error(f"Error in improved Mayo scraping: {str(e)}")
-            return self._get_mayo_fallback_content(limit)
-
-    def _get_mayo_fallback_content(self, limit=3):
-        """Fallback content for Mayo Clinic when all other methods fail"""
-        current_date = datetime.now().strftime("%Y-%m-%d")
-        
-        fallback_articles = [
-            {
-                "title": "Mayo Clinic Health Guidelines: Preventive Care Recommendations",
-                "source": "Mayo Clinic",
-                "url": "https://www.mayoclinic.org/",
-                "content": "Mayo Clinic emphasizes the importance of preventive care, regular health screenings, and evidence-based medical practices for optimal health outcomes.",
-                "published_date": current_date
-            },
-            {
-                "title": "Evidence-Based Medicine: Mayo Clinic's Approach to Patient Care",
-                "source": "Mayo Clinic",
-                "url": "https://www.mayoclinic.org/",
-                "content": "Mayo Clinic's integrated approach combines cutting-edge research with compassionate patient care, focusing on personalized treatment plans.",
-                "published_date": current_date
-            },
-            {
-                "title": "Health and Wellness: Mayo Clinic Lifestyle Recommendations",
-                "source": "Mayo Clinic",
-                "url": "https://www.mayoclinic.org/",
-                "content": "Mayo Clinic provides comprehensive guidance on nutrition, exercise, stress management, and healthy lifestyle choices for disease prevention.",
-                "published_date": current_date
-            }
-        ][:limit]
-        
-        return fallback_articles
-
     def _get_article_content_safe(self, url, headers=None):
-        """Safely get article content with timeout and error handling"""
+        """
+        Safely get article content with timeout and error handling.
+        
+        Args:
+            url (str): Article URL to scrape
+            headers (dict): HTTP headers for request
+            
+        Returns:
+            str: Article content or fallback message
+        """
         try:
             if not url or url == '#':
                 return "Content not available"
@@ -1855,70 +1824,37 @@ Your response must be valid JSON that can be parsed programmatically.
             logger.warning(f"Error getting article content from {url}: {str(e)}")
             return "Content could not be retrieved due to access restrictions"
 
-    def _get_fallback_health_news(self, limit=3):
-        """Enhanced fallback method with more realistic content"""
-        current_date = datetime.now().strftime("%Y-%m-%d")
-        
-        fallback_articles = [
-            {
-                "title": "Global Health Update: Latest Medical Developments",
-                "source": "WHO",
-                "url": "https://www.who.int/news",
-                "summary": "Recent developments in global health initiatives, disease prevention strategies, and healthcare system improvements worldwide.",
-                "content": "The World Health Organization continues to monitor global health trends and provide guidance on emerging health challenges. Recent focus areas include strengthening health systems, improving access to essential medicines, and promoting preventive care measures.",
-                "published_date": current_date
-            },
-            {
-                "title": "Advances in Preventive Healthcare and Disease Management",
-                "source": "CDC",
-                "url": "https://www.cdc.gov/",
-                "summary": "Latest research on disease prevention, vaccination programs, and public health interventions showing positive outcomes.",
-                "content": "Centers for Disease Control and Prevention research shows continued progress in disease prevention and health promotion. Key areas include chronic disease management, infectious disease control, and community health interventions.",
-                "published_date": current_date
-            },
-            {
-                "title": "Medical Research Breakthroughs in Patient Care",
-                "source": "Mayo Clinic",
-                "url": "https://www.mayoclinic.org/",
-                "summary": "Recent medical research findings improving patient outcomes and treatment approaches across various medical specialties.",
-                "content": "Mayo Clinic researchers continue to advance medical knowledge through innovative studies in personalized medicine, surgical techniques, and treatment protocols. Recent findings demonstrate improved patient outcomes through evidence-based care approaches.",
-                "published_date": current_date
-            },
-            {
-                "title": "Seasonal Health Guidelines and Wellness Tips",
-                "source": "Health Authority",
-                                "url": "https://www.health.gov/",
-                "summary": "Seasonal health recommendations and wellness strategies for maintaining optimal health throughout the year.",
-                "content": "Health authorities recommend seasonal adjustments to health routines, including appropriate vaccinations, dietary modifications, and exercise adaptations. Focus on preventive measures and early detection of health issues.",
-                "published_date": current_date
-            }
-        ][:limit]
-        
-        return fallback_articles
 
-    def _summarize_article(self, content, max_length=200):
-        try:
-            if len(content) > 500:
-                prompt = f"""Summarize the following health news article in 3-4 sentences:
+# Celery Tasks for Asynchronous Processing
+# ========================================
+# These tasks handle time-consuming operations in the background
+# to improve user experience and system performance
 
-{content[:4000]}
-
-Summary:"""
-                summary = self._call_together_ai_with_circuit_breaker(prompt)
-                summary = summary.strip()
-                if len(summary) > max_length:
-                    summary = summary[:max_length] + "..."
-                return summary
-            else:
-                return content[:max_length] + ("..." if len(content) > max_length else "")
-        except Exception as e:
-            logger.error(f"Error summarizing article: {str(e)}")
-            return content[:max_length]
-        
 @shared_task
 def analyze_xray_task(xray_id, image_path):
     """
-    Celery task to analyze X-ray images asynchronously
+    Celery task to analyze X-ray images asynchronously.
+    
+    This task runs in the background to avoid blocking the main application
+    while performing computationally intensive X-ray analysis.
+    
+    Args:
+        xray_id (int): Database ID of the XRayAnalysis object
+        image_path (str): Path to the X-ray image file
+        
+    Returns:
+        dict: Analysis results or error information
+        
+    Usage:
+        # Queue the task
+        analyze_xray_task.delay(xray.id, xray.image.path)
+        
+        # Or with custom options
+        analyze_xray_task.apply_async(
+            args=[xray.id, xray.image.path],
+            countdown=2,  # Start after 2 seconds
+            expires=300   # Expire after 5 minutes
+        )
     """
     try:
         from ..models import XRayAnalysis
@@ -1965,7 +1901,24 @@ def analyze_xray_task(xray_id, image_path):
 @shared_task
 def scrape_health_news(source='all', limit=3):
     """
-    Celery task to scrape health news asynchronously
+    Celery task to scrape health news asynchronously.
+    
+    This task runs periodically to keep health news data fresh
+    without blocking user interactions.
+    
+    Args:
+        source (str): News source ('who', 'cdc', 'all')
+        limit (int): Maximum number of articles to retrieve
+        
+    Returns:
+        list: List of saved articles with metadata
+        
+    Usage:
+        # Manual execution
+        scrape_health_news.delay('all', 5)
+        
+        # Scheduled execution (configured in celery.py)
+        # Runs daily at 6 AM UTC
     """
     try:
         praxia = PraxiaAI()
@@ -2012,7 +1965,22 @@ def scrape_health_news(source='all', limit=3):
 @shared_task
 def diagnose_symptoms_task(symptoms, user_profile=None, chat_topic=None):
     """
-    Celery task for symptom diagnosis (if you need async diagnosis)
+    Celery task for symptom diagnosis (for async diagnosis if needed).
+    
+    This task can be used when you need to perform diagnosis asynchronously,
+    though most diagnosis requests are handled synchronously for better UX.
+    
+    Args:
+        symptoms (str): User's symptom description
+        user_profile (dict): User's medical profile
+        chat_topic (str): Chat context
+        
+    Returns:
+        dict: Diagnosis results
+        
+    Usage:
+        # For heavy diagnosis workloads
+        diagnose_symptoms_task.delay(symptoms, user_profile, chat_topic)
     """
     try:
         praxia = PraxiaAI()
@@ -2028,13 +1996,25 @@ def diagnose_symptoms_task(symptoms, user_profile=None, chat_topic=None):
 @shared_task
 def periodic_model_cleanup():
     """
-    Periodic task to clean up model memory and optimize performance
+    Periodic task to clean up model memory and optimize performance.
+    
+    This task runs every 12 hours to:
+    - Clear CUDA cache if available
+    - Force garbage collection
+    - Optimize memory usage
+    
+    Returns:
+        dict: Cleanup status and message
+        
+    Usage:
+        # Scheduled execution (configured in celery.py)
+        # Runs every 12 hours
     """
     try:
         import gc
         import torch
         
-        # Clear cache
+        # Clear CUDA cache if available
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
             torch.cuda.synchronize()
@@ -2052,7 +2032,19 @@ def periodic_model_cleanup():
 @shared_task
 def health_data_refresh():
     """
-    Periodic task to refresh health data cache
+    Periodic task to refresh health data cache.
+    
+    This task runs every 4 hours to:
+    - Clear existing health data cache
+    - Fetch fresh health news and research trends
+    - Update cache with new data
+    
+    Returns:
+        dict: Refresh status and statistics
+        
+    Usage:
+        # Scheduled execution (configured in celery.py)
+        # Runs every 4 hours at 30 minutes past the hour
     """
     try:
         praxia = PraxiaAI()
@@ -2083,7 +2075,20 @@ def health_data_refresh():
 @shared_task
 def validate_model_integrity():
     """
-    Task to validate AI model integrity and performance
+    Task to validate AI model integrity and performance.
+    
+    This task runs daily to:
+    - Test basic AI functionality
+    - Validate model responses
+    - Check component availability
+    - Report system health
+    
+    Returns:
+        dict: Validation results and component status
+        
+    Usage:
+        # Scheduled execution (configured in celery.py)
+        # Runs daily at midnight UTC
     """
     try:
         praxia = PraxiaAI()
@@ -2128,64 +2133,67 @@ def validate_model_integrity():
 
 @shared_task
 def monitor_rss_feeds():
-    """Monitor RSS feed health and update circuit breaker status"""
+    """
+    Monitor RSS feed health and update circuit breaker status.
+    
+    This task runs every 6 hours to:
+    - Test RSS feed availability
+    - Update circuit breaker states
+    - Cache feed status for health checks
+    - Log feed health metrics
+    
+    Returns:
+        dict: RSS feed monitoring results
+        
+    Usage:
+        # Scheduled execution (configured in celery.py)
+        # Runs every 6 hours
+    """
     try:
         from ..circuit_breaker import rss_breaker
         
         rss_sources = {
             'who': 'https://www.who.int/rss-feeds/news-english.xml',
             'cdc': 'https://tools.cdc.gov/api/v2/resources/media/316422.rss',
-            'mayo': [
-                'https://newsnetwork.mayoclinic.org/feed/',
-                'https://www.mayoclinic.org/rss',
-                'https://newsnetwork.mayoclinic.org/category/diseases-conditions/feed/'
-            ],
         }
         
         results = {}
         
-        for source, urls in rss_sources.items():
-            # Handle both single URLs and lists of URLs
-            urls_to_test = urls if isinstance(urls, list) else [urls]
-            
-            source_status = 'failed'
-            for url in urls_to_test:
-                try:
-                    headers = {
-                        'User-Agent': 'Mozilla/5.0 (compatible; PraxiaBot/1.0; +https://praxia.ai)',
-                        'Accept': 'application/rss+xml, application/xml, text/xml',
-                        'Accept-Language': 'en-US,en;q=0.9',
-                    }
-                    
-                    response = requests.get(url, timeout=15, headers=headers)
-                    
-                    if response.status_code == 200:
-                        # Try to parse the feed to ensure it's valid
-                        feed = feedparser.parse(response.content)
-                        if feed.entries:
-                            source_status = 'operational'
-                            logger.info(f"RSS feed {source} is operational at {url}")
-                            break  # Success, no need to test other URLs
-                        else:
-                            logger.warning(f"RSS feed {source} at {url} has no entries")
-                    elif response.status_code == 403:
-                        logger.warning(f"RSS feed {source} at {url} returned 403 Forbidden")
-                        source_status = 'forbidden'
+        for source, url in rss_sources.items():
+            try:
+                headers = {
+                    'User-Agent': 'Mozilla/5.0 (compatible; PraxiaBot/1.0; +https://praxia.ai)',
+                    'Accept': 'application/rss+xml, application/xml, text/xml',
+                    'Accept-Language': 'en-US,en;q=0.9',
+                }
+                
+                response = requests.get(url, timeout=15, headers=headers)
+                
+                if response.status_code == 200:
+                    # Try to parse the feed to ensure it's valid
+                    feed = feedparser.parse(response.content)
+                    if feed.entries:
+                        results[source] = 'operational'
+                        logger.info(f"RSS feed {source} is operational")
                     else:
-                        logger.warning(f"RSS feed {source} at {url} returned {response.status_code}")
-                        source_status = f'error_{response.status_code}'
-                        
-                except requests.exceptions.Timeout:
-                    logger.warning(f"RSS feed {source} at {url} timed out")
-                    source_status = 'timeout'
-                except requests.exceptions.RequestException as e:
-                    logger.warning(f"RSS feed {source} at {url} request failed: {str(e)}")
-                    source_status = f'request_error'
-                except Exception as e:
-                    logger.error(f"RSS feed monitoring failed for {source} at {url}", error=str(e))
-                    source_status = f'error'
-            
-            results[source] = source_status
+                        logger.warning(f"RSS feed {source} has no entries")
+                        results[source] = 'no_entries'
+                elif response.status_code == 403:
+                    logger.warning(f"RSS feed {source} returned 403 Forbidden")
+                    results[source] = 'forbidden'
+                else:
+                    logger.warning(f"RSS feed {source} returned {response.status_code}")
+                    results[source] = f'error_{response.status_code}'
+                    
+            except requests.exceptions.Timeout:
+                logger.warning(f"RSS feed {source} timed out")
+                results[source] = 'timeout'
+            except requests.exceptions.RequestException as e:
+                logger.warning(f"RSS feed {source} request failed: {str(e)}")
+                results[source] = 'request_error'
+            except Exception as e:
+                logger.error(f"RSS feed monitoring failed for {source}", error=str(e))
+                results[source] = 'error'
         
         # Cache results for health check and circuit breaker decisions
         cache.set('rss_feed_status', results, 60 * 60 * 6)  # Cache for 6 hours

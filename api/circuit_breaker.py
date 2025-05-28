@@ -16,13 +16,6 @@ who_breaker = pybreaker.CircuitBreaker(
     name='who_api'
 )
 
-mayo_breaker = pybreaker.CircuitBreaker(
-    fail_max=5,
-    reset_timeout=60, 
-    exclude=[ValueError, TypeError],
-    name='mayo_api'
-)
-
 # Fixed: Use only valid parameters for pybreaker
 together_ai_breaker = pybreaker.CircuitBreaker(
     fail_max=2,  
@@ -173,22 +166,6 @@ def who_api_fallback(query=None, *args, **kwargs):
     
     return "WHO guidelines recommend consulting with qualified healthcare professionals for medical concerns. Maintain good hygiene practices and follow local health authority recommendations."
 
-def mayo_clinic_fallback(query=None, *args, **kwargs):
-    """Enhanced fallback function for Mayo Clinic data"""
-    logger.info("Using Mayo Clinic fallback", query=str(query)[:50] if query else "unknown")
-    
-    # Provide evidence-based guidance based on query
-    if query and isinstance(query, str):
-        query_lower = query.lower()
-        if any(keyword in query_lower for keyword in ['diet', 'nutrition', 'eating']):
-            return "Maintain a balanced diet with plenty of fruits, vegetables, whole grains, and lean proteins. Limit processed foods and added sugars. Consult a registered dietitian for personalized advice."
-        elif any(keyword in query_lower for keyword in ['exercise', 'fitness', 'activity']):
-            return "Aim for at least 150 minutes of moderate aerobic activity weekly. Include strength training exercises twice per week. Start gradually and consult healthcare providers before beginning new exercise programs."
-        elif any(keyword in query_lower for keyword in ['sleep', 'insomnia', 'tired']):
-            return "Maintain consistent sleep schedules. Aim for 7-9 hours of sleep nightly. Create a relaxing bedtime routine and optimize your sleep environment."
-    
-    return "Mayo Clinic recommends evidence-based medical care. For specific health concerns, consult with qualified healthcare professionals who can provide personalized medical advice based on your individual situation."
-
 def together_ai_fallback(prompt=None, *args, **kwargs):
     """Enhanced fallback function for Together AI API"""
     logger.info("Using Together AI fallback", prompt_length=len(str(prompt)) if prompt else 0)
@@ -319,7 +296,7 @@ def pubmed_fallback(query=None, limit=5, *args, **kwargs):
 # Health check function for circuit breakers
 def check_circuit_breakers():
     """Check the status of all circuit breakers"""
-    breakers = [who_breaker, mayo_breaker, together_ai_breaker, pubmed_breaker, rss_breaker]
+    breakers = [who_breaker, together_ai_breaker, pubmed_breaker, rss_breaker]
     status = {}
     
     for breaker in breakers:
@@ -377,11 +354,6 @@ def safe_who_api_call(query):
     """Safely execute WHO API calls with circuit breaker protection"""
     pass
 
-@circuit_breaker_with_fallback(mayo_breaker, mayo_clinic_fallback)
-def safe_mayo_clinic_call(query):
-    """Safely execute Mayo Clinic calls with circuit breaker protection"""
-    pass
-
 # Add a new circuit breaker for RSS feeds
 rss_breaker = pybreaker.CircuitBreaker(
     fail_max=3,
@@ -397,18 +369,7 @@ def rss_fallback(source='all', limit=3, *args, **kwargs):
     current_date = datetime.now().strftime("%Y-%m-%d")
     
     # Source-specific fallback content
-    if source == 'mayo':
-        return [
-            {
-                "title": "Mayo Clinic Health Update: Medical Excellence and Patient Care",
-                "source": "Mayo Clinic",
-                "url": "https://www.mayoclinic.org/",
-                "summary": "Mayo Clinic continues to provide world-class medical care with a focus on patient-centered treatment approaches.",
-                "content": "Mayo Clinic's commitment to medical excellence includes innovative treatments, comprehensive care, and evidence-based medicine.",
-                "published_date": current_date
-            }
-        ][:limit]
-    elif source == 'who':
+    if source == 'who':
         return [
             {
                 "title": "WHO Global Health Update: Disease Prevention and Health Promotion",

@@ -179,7 +179,7 @@ class ChatMessageView(APIView):
                     with ThreadPoolExecutor(max_workers=1) as executor:
                         future = executor.submit(process_ai_request)
                         try:
-                            ai_response = future.result(timeout=45)  # 45 second timeout
+                            ai_response = future.result(timeout=30) 
                         except FutureTimeoutError:
                             logger.error("AI processing timeout", user=request.user.username)
                             ai_response = self._get_timeout_response()
