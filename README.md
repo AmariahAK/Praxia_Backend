@@ -1,6 +1,6 @@
 # Praxia Backend
 
-Praxia is an AI-powered healthcare assistant backend system developed by Amariah Kamau. This system provides medical symptom analysis, X-ray image interpretation, medical research retrieval, and personalized health recommendations through a robust REST API. It is now fully open-source to encourage collaboration and innovation in the medtech space.
+Praxia is an AI-powered healthcare assistant backend system developed by Amariah Kamau. This system provides medical symptom analysis, X-ray image interpretation, medical research retrieval, and personalized health recommendations through a robust REST API.
 
 ## Features
 
@@ -44,7 +44,7 @@ For detailed setup instructions, refer to the [Setup Guide](guide/Setup.md).
    cd Praxia_Backend
    ```
 
-2. Create a `.env` file based on the `.env.prod` example in the project root.
+2. Create a `.env` file based on the `.env.example` in the project root.
 
 3. Build and start the containers:
    ```bash
@@ -53,125 +53,127 @@ For detailed setup instructions, refer to the [Setup Guide](guide/Setup.md).
 
 4. The API will be available at `http://localhost:8000/api/`
 
-## API Endpoints
-
-### Authentication
-- `POST /api/auth/register/`: Register a new user
-- `POST /api/auth/login/`: Login and get authentication token
-- `POST /api/auth/logout/`: Logout and invalidate token
-
-### User Profile
-- `GET /api/profile/`: Get user profile
-- `PATCH /api/profile/`: Update user profile
-- `POST /api/profile/confirm-gender/`: Confirm and lock gender information
-
-### Medical Consultations
-- `GET /api/consultations/`: List all consultations
-- `POST /api/consultations/`: Create a new consultation (supports multilingual input)
-
-### X-ray Analysis
-- `GET /api/xray-analyses/`: List all X-ray analyses
-- `POST /api/xray-analyses/`: Upload and analyze an X-ray image (detects pneumonia, fractures, tumors)
-
-### Research Queries
-- `GET /api/research/`: List all research queries
-- `POST /api/research/`: Create a new research query
-
-### Health News
-- `GET /api/health-news/`: Get latest health news articles
-  - Query parameters: `source` (who, cdc, all), `limit` (default: 3, max: 10)
-
-### Chat
-- `GET /api/chat-sessions/`: List all chat sessions
-- `POST /api/chat-sessions/`: Create a new chat session
-- `GET /api/chat-sessions/{id}/`: Get a specific chat session
-- `GET /api/chat-sessions/{id}/messages/`: Get messages for a chat session
-- `POST /api/chat-sessions/{id}/messages/`: Send a message and get AI response
-
-### WebSocket Endpoints
-- `ws://localhost:8000/ws/chat/{session_id}/`: Real-time chat with the AI
-- `ws://localhost:8000/ws/health/`: Health check WebSocket endpoint
-
-### System
-- `GET /api/health/`: Check system health status
-
 ## Project Structure
 
 ```
 Praxia_Backend/
-├── api/                    # Main application
-│   ├── AI/                 # AI-related logic
-│   │   ├── ai_healthcheck.py  # Health check views for AI services
-│   │   └── praxia_model.py    # AI model integration
-│   ├── email_templates/    # Email templates for user notifications
-│   │   ├── base.html
-│   │   ├── password_changed.html
-│   │   ├── password_reset.html
-│   │   └── verification_email.html
-│   ├── middleware/         # Custom middleware
-│   │   └── throttling.py   # Rate limiting logic
-│   ├── models/             # Database models
-│   │   ├── __init__.py
-│   │   ├── ai.py           # AI-related models
-│   │   ├── auth.py         # Authentication models
-│   │   ├── translation.py  # Translation models
-│   │   └── user.py         # User models
-│   ├── serializers/        # API serializers
-│   │   ├── __init__.py
-│   │   ├── ai_serializer.py   # AI data serialization
-│   │   ├── auth_serializer.py # Authentication serialization
-│   │   └── user_serializer.py # User data serialization
-│   ├── urls/               # URL routing
-│   │   └── urls.py         # API URL configurations
-│   ├── views/              # API views
-│   │   ├── ai_views.py     # AI-related views
-│   │   ├── auth_views.py   # Authentication views
-│   │   ├── health_views.py # Health check views
-│   │   └── user_views.py   # User-related views
+├── api/                          # Main Django application
+│   ├── AI/                       # AI-related logic
+│   ├── email_templates/          # Email templates for notifications
+│   ├── middleware/               # Custom middleware
+│   ├── models/                   # Database models
+│   ├── serializers/              # API serializers
+│   ├── urls/                     # URL routing
+│   │   └── urls.py               # API endpoint definitions
+│   ├── utils/                    # Utility functions
+│   │   └── download_model.py     # DenseNet model download utility
+│   ├── views/                    # API views
+│   ├── admin.py                  # Django admin configurations
+│   ├── apps.py                   # App configurations
+│   ├── circuit_breaker.py        # Circuit breaker for external APIs
+│   ├── consumers.py              # WebSocket consumers
+│   ├── db_routers.py             # Database routing logic
+│   ├── routing.py                # WebSocket routing
+│   └── signals.py                # Signal handlers
+├── data/                         # Data files and configurations
+│   ├── ai_identity.txt           # AI identity configuration (customizable)
+│   └── models/                   # AI model weights storage
+├── grafana/                      # Grafana configuration and dashboards
+├── guide/                        # Documentation
+│   ├── Setup.md                  # Detailed setup instructions
+│   └── LICENSE.md                # License information
+├── logs/                         # Application logs
+├── nginx/                        # Nginx configuration
+│   ├── nginx.conf                # Nginx server configuration
+│   └── Dockerfile                # Nginx Docker configuration
+├── praxia_backend/               # Django project settings
 │   ├── __init__.py
-│   ├── admin.py            # Django admin configurations
-│   ├── apps.py             # App configurations
-│   ├── circuit_breaker.py  # Circuit breaker for external APIs
-│   ├── consumers.py        # WebSocket consumers
-│   ├── db_routers.py       # Database routing logic
-│   ├── locustfile.py       # Load testing configurations
-│   ├── routing.py          # WebSocket routing
-│   ├── signals.py          # Signal handlers
-│   └── tests.py            # Unit tests
-├── data/                   # Data files
-│   ├── grafana/provisioning/  # Grafana provisioning configs
-│   ├── models/             # AI model weights
-│   └── ai_identity.txt     # AI identity information
-├── nginx/                  # Nginx configuration
-│   └── nginx.conf          # Nginx server config
-├── praxia_backend/         # Project settings
-│   ├── __init__.py
-│   ├── asgi.py             # ASGI configuration
-│   ├── celery.py           # Celery configuration
-│   ├── settings.py         # Django settings
-│   ├── urls.py             # Root URL configurations
-│   └── wsgi.py             # WSGI configuration
-├── prometheus/             # Prometheus configuration
-│   └── prometheus.yml      # Prometheus config file
-├── utils/                  # Utility functions
-│   ├── download_model.py   # Model download utilities
-│   └── email.py            # Email utilities
-├── docker-compose.prod.yml # Docker Compose for production
-├── docker-compose.yml      # Docker Compose configuration
-├── Dockerfile              # Docker configuration
-├── Dockerfile.sam          # Dockerfile for SAM
-├── entrypoint-prod.sh      # Production entrypoint script
-├── init-db.sh              # Database initialization script
-├── manage.py               # Django management script
-├── README.md               # Project documentation
-└── requirements.txt        # Python dependencies
+│   ├── asgi.py                   # ASGI configuration
+│   ├── celery.py                 # Celery configuration
+│   ├── settings.py               # Django settings
+│   ├── urls.py                   # Root URL configurations
+│   └── wsgi.py                   # WSGI configuration
+├── prometheus/                   # Prometheus monitoring configuration
+├── docker-compose.yml            # Development Docker Compose
+├── docker-compose.prod.yml       # Production Docker Compose
+├── Dockerfile                    # Main application Docker configuration
+├── docker-entrypoint-wrapper.sh  # Docker entrypoint wrapper
+├── entrypoint.sh                 # Development entrypoint script
+├── entrypoint.prod.sh            # Production entrypoint script
+├── manage.py                     # Django management script
+├── requirements.txt              # Python dependencies
+├── .env                          # Development environment variables
+├── .env.prod                     # Production environment variables
+└── README.md                     # This file
 ```
 
-## Deployment
+## API Endpoints
 
-For detailed deployment instructions, refer to the [Setup Guide](guide/Setup.md).
+All API endpoints are defined in `api/urls/urls.py`. Key endpoints include:
+
+### Authentication
+- `POST /api/auth/register/` - Register a new user
+- `POST /api/auth/login/` - Login and get authentication token
+- `POST /api/auth/logout/` - Logout and invalidate token
+- `POST /api/auth/verify_email/` - Verify email address
+- `POST /api/auth/password-reset-request/` - Request password reset
+- `POST /api/auth/password-reset-confirm/` - Confirm password reset
+
+### User Profile
+- `GET /api/profile/` - Get user profile
+- `PATCH /api/profile/` - Update user profile
+- `POST /api/profile/confirm-gender/` - Confirm and lock gender information
+
+### Medical Services
+- `GET /api/consultations/` - List medical consultations
+- `POST /api/consultations/` - Create new consultation (supports multilingual input)
+- `GET /api/xray-analyses/` - List X-ray analyses
+- `POST /api/xray-analyses/` - Upload and analyze X-ray image
+- `GET /api/research/` - List research queries
+- `POST /api/research/` - Create new research query
+
+### Chat System
+- `GET /api/chat-sessions/` - List chat sessions
+- `POST /api/chat-sessions/` - Create new chat session
+- `GET /api/chat-sessions/{id}/messages/` - Get chat messages
+- `POST /api/chat-sessions/{id}/messages/` - Send message and get AI response
+
+### Health & News
+- `GET /api/health/` - System health check
+- `GET /api/health-news/` - Get latest health news
+
+### WebSocket Endpoints
+- `ws://localhost:8000/ws/chat/{session_id}/` - Real-time chat
+- `ws://localhost:8000/ws/health/` - Health monitoring
+
+## Configuration
+
+### Environment Files
+- `.env` - Development configuration
+- `.env.prod` - Production configuration
+
+### AI Identity Customization
+Developers can customize Praxia's identity by editing `data/ai_identity.txt`. This file contains:
+- AI assistant name and description
+- Developer information
+- Primary healthcare functions
+- Personality traits and response guidelines
+
+### DenseNet Model Setup
+If you encounter issues with the X-ray analysis model:
+
+1. Manually run the model download script:
+   ```bash
+   python api/utils/download_model.py
+   ```
+
+2. Restart the Docker containers:
+   ```bash
+   docker-compose restart
+   ```
 
 ## Rate Limiting
+
 The API implements rate limiting to prevent abuse:
 
 | Endpoint Type      | Authenticated Rate | Anonymous Rate |
@@ -182,74 +184,62 @@ The API implements rate limiting to prevent abuse:
 | Research          | 20/hour            | 3/minute       |
 | Health News       | 20/hour            | 3/minute       |
 
-## Resilience Features
-
-### Circuit Breakers
-Circuit breakers for external API calls prevent cascading failures:
-
-| Service         | Failure Threshold | Reset Timeout |
-|-----------------|-------------------|---------------|
-| WHO API         | 5 failures        | 60 seconds    |
-| Mayo Clinic     | 5 failures        | 60 seconds    |
-| Together AI     | 3 failures        | 30 seconds    |
-| PubMed          | 5 failures        | 60 seconds    |
-| LibreTranslate  | 5 failures        | 60 seconds    |
-
-### Caching
-Responses are cached to improve performance:
-
-| Data Type         | Cache Duration |
-|-------------------|----------------|
-| Diagnosis         | 24 hours       |
-| Research          | 24 hours       |
-| WHO Guidelines    | 24 hours       |
-| Mayo Clinic Data  | 24 hours       |
-| Translations      | 24 hours       |
-| X-ray Analysis    | 24 hours       |
-| Health News       | 12 hours       |
-
 ## Monitoring
 
 ### Health Checks
-Automatic health checks run every 14 minutes at `/api/health/`.
+- Automatic health checks run every 6 hours at `/api/health/`
+- Authenticated health checks available at `/api/health/authenticated/`
 
 ### Prometheus & Grafana
-- Prometheus metrics: port 9090
-- Grafana dashboards: port 3000
-- Default Grafana login: admin / admin_password
+- Prometheus metrics: `http://localhost:9090`
+- Grafana dashboards: `http://localhost:3000`
+- Default Grafana credentials: admin / admin_password
 
 ## Multilingual Support
-Supports symptom analysis in:
-- **English**: Default
-- **French**: Medical terms and symptoms
-- **Spanish**: Medical terms and symptoms
 
-The system translates user input to English for processing and responses back to the original language.
+Supports medical consultations in:
+- **English** (default)
+- **French** - Medical terms and symptoms
+- **Spanish** - Medical terms and symptoms
 
 ## X-ray Analysis Capabilities
-Detects:
-- **Pneumonia**: Lung inflammation patterns
-- **Fractures**: Bone fractures
-- **Tumors**: Tumorous growths
-- **Normal**: No significant abnormalities
 
-Includes confidence scores and recommendations.
+The DenseNet121 model can detect:
+- **Pneumonia** - Lung inflammation patterns
+- **Fractures** - Bone fractures
+- **Tumors** - Tumorous growths
+- **Normal** - No significant abnormalities
+
+Results include confidence scores and medical recommendations.
 
 ## Contributing to Praxia
 
-1. Fork the repository.
-2. Create a feature branch (`git checkout -b feature/YourFeature`).
-3. Commit your changes (`git commit -m "Add YourFeature"`).
-4. Push to the branch (`git push origin feature/YourFeature`).
-5. Open a Pull Request.
+Thank you for your interest in Praxia! While I appreciate the community's enthusiasm, this project is currently maintained as a personal portfolio project. I encourage developers to fork the repository and use it as inspiration for their own healthcare applications.
 
-Contributions must comply with the Praxia License, including not using the name "Praxia" for derivative works and crediting Amariah Kamau, as specified in [LICENSE.md](guide/LICENSE.md).
+If you'd like to build upon Praxia's foundation, please feel free to:
+- Fork the repository for your own projects
+- Use the codebase as a learning resource
+- Adapt the concepts for your own healthcare solutions
+
+Please ensure any derivative works comply with the Praxia License, including not using the name "Praxia" for derivative works and crediting Amariah Kamau, as specified in [LICENSE.md](guide/LICENSE.md).
+
+### Development Guidelines
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/YourFeature`)
+3. Make your changes
+4. Test thoroughly
+5. Commit your changes (`git commit -m "Add YourFeature"`)
+6. Push to the branch (`git push origin feature/YourFeature`)
+7. Open a Pull Request
 
 ## License
 
-Licensed under the Praxia License. See [LICENSE.md](guide/LICENSE.md) for details.
+This project is licensed under the Praxia License. See [LICENSE.md](guide/LICENSE.md) for details.
 
 ### Third-Party Licenses
+
+Praxia uses the following open-source software:
 - [Django](https://github.com/django/django) - BSD License
 - [Django REST Framework](https://github.com/encode/django-rest-framework) - BSD License
 - [PostgreSQL](https://www.postgresql.org/) - PostgreSQL License
