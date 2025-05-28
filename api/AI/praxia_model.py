@@ -52,16 +52,7 @@ class PraxiaAI:
     """
 
     def __init__(self):
-        """
-        Initialize the Praxia AI model with all necessary components.
-        
-        Sets up:
-        - AI identity and configuration
-        - Together AI API client
-        - PubMed research client
-        - PyTorch device detection (CUDA/CPU)
-        - DenseNet model for X-ray analysis (optional)
-        """
+        """Initialize the Praxia AI model with all necessary components."""
         self.identity = self._load_identity()
         self.together_api_key = settings.TOGETHER_AI_API_KEY
         self.together_model = settings.TOGETHER_AI_MODEL
@@ -81,12 +72,7 @@ class PraxiaAI:
             self._initialize_xray_model()
 
     def _load_identity(self):
-        """
-        Load AI identity configuration from file.
-        
-        Returns:
-            str: AI identity description for consistent personality
-        """
+        """Load AI identity configuration from file."""
         identity_path = os.path.join(settings.BASE_DIR, 'data', 'ai_identity.txt')
         try:
             with open(identity_path, 'r') as file:
@@ -96,17 +82,7 @@ class PraxiaAI:
             return "Praxia - A healthcare AI assistant by Amariah Kamau"
 
     def _initialize_xray_model(self):
-        """
-        Initialize DenseNet model for X-ray image analysis.
-        
-        Attempts to load a pre-trained DenseNet121 model for medical imaging.
-        Falls back to a basic model structure if weights are unavailable.
-        
-        Model Architecture:
-        - DenseNet121 backbone
-        - Custom classifier for 3 classes: fracture, tumor, pneumonia
-        - CPU/CUDA compatible
-        """
+        """Initialize DenseNet model for X-ray image analysis."""
         try:
             # Try to use fixed model if available (recommended approach)
             from ..utils.model_fix import fix_densenet_model
@@ -205,17 +181,7 @@ class PraxiaAI:
             self.densenet_model = None
 
     def _get_latest_health_data(self):
-        """
-        Retrieve and cache the latest health data from multiple sources.
-        
-        Aggregates data from:
-        - WHO and CDC health news
-        - Medical research trends
-        - Cached data for performance
-        
-        Returns:
-            dict: Structured health data with news and research trends
-        """
+        """Retrieve and cache the latest health data from multiple sources."""
         try:
             # Check cache first for performance
             cached_data = cache.get('latest_health_data')
@@ -270,15 +236,7 @@ class PraxiaAI:
             }
 
     def _build_user_context(self, user_profile):
-        """
-        Build personalized context string from user profile data.
-        
-        Args:
-            user_profile (dict): User's medical and demographic information
-            
-        Returns:
-            str: Formatted context string for AI processing
-        """
+        """Build personalized context string from user profile data."""
         if not user_profile:
             return ""
         
@@ -304,19 +262,41 @@ class PraxiaAI:
         logger.info("User context built successfully", context_length=len(context))
         return context
 
+    def _get_source_icon(self, journal_or_source):
+        """Map journal/source names to correct icon names that match frontend"""
+        if not journal_or_source:
+            return "source-icon"
+        
+        source_lower = str(journal_or_source).lower()
+        
+        # Map to your actual icon file names (without .svg extension)
+        icon_mapping = {
+            'who': 'who-logo',
+            'world health organization': 'who-logo',
+            'world health': 'who-logo',
+            'cdc': 'cdc-logo',
+            'centers for disease control': 'cdc-logo',
+            'centers for disease': 'cdc-logo',
+            'nih': 'nih-logo',
+            'national institutes of health': 'nih-logo',
+            'national institutes': 'nih-logo',
+            'mayo clinic': 'mayo-logo',
+            'mayo': 'mayo-logo',
+            'pubmed': 'pubmed-logo',
+            'journal': 'journal-icon',
+            'medical journal': 'journal-icon'
+        }
+        
+        # Check for exact matches first
+        for key, icon in icon_mapping.items():
+            if key in source_lower:
+                return icon
+        
+        # Default fallback
+        return "source-icon"
+
     def _extract_medical_topic(self, symptoms: str, user_profile: Dict[str, Any] = None) -> str:
-        """
-        Extract a focused medical topic from symptoms for targeted research.
-        
-        Uses NLP techniques to categorize symptoms and create targeted search queries.
-        
-        Args:
-            symptoms (str): User's symptom description
-            user_profile (dict): User demographic data for context
-            
-        Returns:
-            str: Extracted medical topic for research queries
-        """
+        """Extract a focused medical topic from symptoms for targeted research."""
         try:
             # Clean and normalize symptom text
             cleaned_symptoms = re.sub(r'[^\w\s]', ' ', symptoms.lower())
@@ -382,21 +362,7 @@ class PraxiaAI:
             return "general medical consultation"
 
     def _preprocess_symptoms(self, symptoms):
-        """
-        Clean and normalize user symptom input for processing.
-        
-        Handles:
-        - Input validation and sanitization
-        - Greeting removal
-        - Length normalization
-        - Character encoding issues
-        
-        Args:
-            symptoms (str): Raw user input
-            
-        Returns:
-            str: Cleaned and normalized symptom description
-        """
+        """Clean and normalize user symptom input for processing."""
         if not symptoms or len(symptoms.strip()) < 3:
             return "general health inquiry"
         
@@ -441,24 +407,7 @@ class PraxiaAI:
             return "general health inquiry"
 
     def diagnose_symptoms(self, symptoms, user_profile=None, chat_topic=None):
-        """
-        Main symptom diagnosis method using AI and medical research.
-        
-        Process:
-        1. Preprocess and validate symptoms
-        2. Extract medical topic for targeted research
-        3. Retrieve relevant medical research
-        4. Generate AI-powered diagnosis
-        5. Cache results for performance
-        
-        Args:
-            symptoms (str): User's symptom description
-            user_profile (dict): User's medical profile
-            chat_topic (str): Existing chat context
-            
-        Returns:
-            dict: Comprehensive diagnosis with conditions, advice, and research
-        """
+        """Main symptom diagnosis method using AI and medical research."""
         try:
             processed_symptoms = self._preprocess_symptoms(symptoms)
         
@@ -552,6 +501,11 @@ class PraxiaAI:
             # Filter research by user profile relevance
             final_research = self._filter_research_by_relevance(filtered_research, user_profile, max_results=3)
             
+            # Add source icons to research articles
+            for article in final_research:
+                if 'source_icon' not in article:
+                    article['source_icon'] = self._get_source_icon(article.get('journal', 'Medical Journal'))
+            
             # Build research context for AI processing
             research_context = ""
             if final_research:
@@ -561,7 +515,6 @@ class PraxiaAI:
                     research_context += f"{article.get('abstract', 'No abstract')[:200]}...\n"
             
             # Build health news context
-                        # Build health news context
             news_context = ""
             if 'health_news' in health_data and health_data['health_news']:
                 news_context = "Recent health news:\n"
@@ -569,7 +522,7 @@ class PraxiaAI:
                     news_context += f"{i+1}. {article.get('title', 'Untitled')} ({article.get('source', 'Unknown')}): "
                     news_context += f"{article.get('summary', 'No summary')[:150]}...\n"
 
-            # Create comprehensive AI prompt for diagnosis
+                        # Create comprehensive AI prompt for diagnosis
             prompt = f"""You are Praxia, a medical AI assistant. {self.identity}
 
 {context}
@@ -664,15 +617,7 @@ Your response must be valid JSON that can be parsed programmatically.
             return self._get_fallback_diagnosis_response("general medical consultation")
 
     def _get_fallback_diagnosis_response(self, medical_topic):
-        """
-        Get a safe fallback response when all else fails.
-        
-        Args:
-            medical_topic (str): The medical topic being analyzed
-            
-        Returns:
-            dict: Safe fallback diagnosis response
-        """
+        """Get a safe fallback response when all else fails."""
         return {
             "diagnosis": {
                 "conditions": ["Unable to analyze symptoms at this time"],
@@ -686,23 +631,7 @@ Your response must be valid JSON that can be parsed programmatically.
         }
 
     def _filter_research_by_relevance(self, research_results, user_profile=None, max_results=3):
-        """
-        Filter and rank research results based on user profile relevance.
-        
-        Scoring system considers:
-        - Age-specific research (pediatric, geriatric, adult)
-        - Gender-specific studies
-        - Regional disease patterns
-        - Allergy considerations
-        
-        Args:
-            research_results (list): List of research articles
-            user_profile (dict): User's demographic and medical data
-            max_results (int): Maximum number of results to return
-            
-        Returns:
-            list: Filtered and ranked research results
-        """
+        """Filter and rank research results based on user profile relevance."""
         if not research_results or not user_profile:
             return research_results[:max_results]
         
@@ -765,22 +694,7 @@ Your response must be valid JSON that can be parsed programmatically.
         return [article for score, article in scored_results[:max_results]]
 
     def get_medical_research(self, query, limit=5):
-        """
-        Enhanced medical research retrieval with circuit breaker protection.
-        
-        Features:
-        - PubMed integration for peer-reviewed research
-        - Intelligent query optimization
-        - Caching for performance
-        - Circuit breaker fallback protection
-        
-        Args:
-            query (str): Medical research query
-            limit (int): Maximum number of results
-            
-        Returns:
-            list: List of research articles with metadata
-        """
+        """Enhanced medical research retrieval with circuit breaker protection."""
         cache_key = f"research_{hash(query)}_{limit}"
         cached_result = cache.get(cache_key)
         if cached_result:
@@ -835,7 +749,8 @@ Your response must be valid JSON that can be parsed programmatically.
                         "journal": journal,
                         "publication_date": pub_date_str,
                         "doi": doi,
-                        "abstract": abstract
+                        "abstract": abstract,
+                        "source_icon": self._get_source_icon(journal)
                     }
                     articles.append(article_data)
                 
@@ -857,28 +772,14 @@ Your response must be valid JSON that can be parsed programmatically.
                     "journal": "Medical Journal", 
                     "publication_date": "2023",
                     "doi": None,
-                    "abstract": f"Recent research in {query[:50]} and related medical conditions."
+                    "abstract": f"Recent research in {query[:50]} and related medical conditions.",
+                    "source_icon": self._get_source_icon("Medical Journal")
                 }
             ]
             return placeholder_results[:limit]
 
     def analyze_diet(self, dietary_info, user_profile=None):
-        """
-        Analyze user's dietary information and provide personalized recommendations.
-        
-        Features:
-        - Nutritional assessment
-        - Personalized recommendations based on user profile
-        - Health considerations
-        - Meal suggestions
-        
-        Args:
-            dietary_info (str): User's dietary information
-            user_profile (dict): User's demographic and health data
-            
-        Returns:
-            dict: Comprehensive dietary analysis and recommendations
-        """
+        """Analyze user's dietary information and provide personalized recommendations."""
         try:
             cache_key = f"diet_analysis_{hash(dietary_info)}_{hash(str(user_profile))}"
             cached_result = cache.get(cache_key)
@@ -936,22 +837,7 @@ Your response must be valid JSON that can be parsed programmatically.
             }
 
     def analyze_medication(self, medication_info, user_profile=None):
-        """
-        Analyze medication information and check for potential interactions.
-        
-        Features:
-        - Drug interaction checking
-        - Side effect monitoring
-        - Personalized precautions
-        - Safety recommendations
-        
-        Args:
-            medication_info (str): User's medication information
-            user_profile (dict): User's demographic and health data
-            
-        Returns:
-            dict: Comprehensive medication analysis and safety information
-        """
+        """Analyze medication information and check for potential interactions."""
         try:
             cache_key = f"medication_analysis_{hash(medication_info)}_{hash(str(user_profile))}"
             cached_result = cache.get(cache_key)
@@ -1008,21 +894,7 @@ Your response must be valid JSON that can be parsed programmatically.
             }
 
     def analyze_xray(self, image_data):
-        """
-        Analyze X-ray images using DenseNet deep learning model.
-        
-        Features:
-        - DenseNet121 architecture for medical imaging
-        - Multi-class classification (fracture, tumor, pneumonia, normal)
-        - Confidence scoring
-        - AI-powered interpretation
-        
-        Args:
-            image_data: X-ray image data (file path or binary data)
-            
-        Returns:
-            dict: Comprehensive X-ray analysis with findings and recommendations
-        """
+        """Analyze X-ray images using DenseNet deep learning model."""
         if not hasattr(self, 'densenet_model') or self.densenet_model is None:
             logger.warning("DenseNet model not initialized")
             return {
@@ -1128,7 +1000,7 @@ Your response must be valid JSON that can be parsed programmatically.
                     "possible_conditions": list(detected_conditions.keys()),
                     "recommendations": ["Consult with a radiologist for professional interpretation"],
                     "limitations": ["AI analysis should be confirmed by a healthcare professional"]
-                                    }
+                }
             
             result = {
                 "analysis": "X-ray analysis completed successfully",
@@ -1150,17 +1022,7 @@ Your response must be valid JSON that can be parsed programmatically.
             return {"error": str(e), "message": "Unable to process X-ray at this time."}
 
     def _call_together_ai_with_circuit_breaker(self, prompt):
-        """
-        Call Together AI with circuit breaker protection.
-        
-        Provides fallback functionality when the AI service is unavailable.
-        
-        Args:
-            prompt (str): The prompt to send to the AI
-            
-        Returns:
-            str: AI response or fallback response
-        """
+        """Call Together AI with circuit breaker protection."""
         try:
             from ..circuit_breaker import together_ai_breaker
             return together_ai_breaker.call(self._call_together_ai, prompt)
@@ -1171,18 +1033,7 @@ Your response must be valid JSON that can be parsed programmatically.
             return together_ai_fallback(prompt)
 
     def _call_together_ai(self, prompt):
-        """
-        Direct call to Together AI API.
-        
-        Args:
-            prompt (str): The prompt to send
-            
-        Returns:
-            str: AI response text
-            
-        Raises:
-            Exception: If API call fails
-        """
+        """Direct call to Together AI API."""
         url = "https://api.together.xyz/v1/completions"
         payload = {
             "model": self.together_model,
@@ -1205,7 +1056,7 @@ Your response must be valid JSON that can be parsed programmatically.
             if response.status_code == 200:
                 return response.json()["choices"][0]["text"].strip()
             else:
-                raise Exception(f"API call failed with status {response.status_code}: {response.text}")
+                                raise Exception(f"API call failed with status {response.status_code}: {response.text}")
         except requests.exceptions.RequestException as e:
             logger.error("Error calling Together AI API", error=str(e))
             raise Exception(f"API request failed: {str(e)}")
@@ -1217,21 +1068,7 @@ Your response must be valid JSON that can be parsed programmatically.
             raise Exception(f"Unexpected error: {str(e)}")
 
     def _get_health_news_comprehensive(self, source='all', limit=5):
-        """
-        Comprehensive health news retrieval with enhanced error handling.
-        
-        Strategy:
-        1. Try RSS feeds first (WHO, CDC)
-        2. Use web scraping as fallback
-        3. Provide enhanced fallback content if all else fails
-        
-        Args:
-            source (str): News source ('who', 'cdc', 'all')
-            limit (int): Maximum number of articles to retrieve
-            
-        Returns:
-            list: List of health news articles
-        """
+        """Comprehensive health news retrieval with enhanced error handling."""
         cache_key = f"health_news_comprehensive_{source}_{limit}"
         cached_result = cache.get(cache_key)
         if cached_result:
@@ -1246,7 +1083,7 @@ Your response must be valid JSON that can be parsed programmatically.
                 with ThreadPoolExecutor(max_workers=1) as executor:
                     future = executor.submit(self._get_health_news_from_rss_direct, source, limit)
                     try:
-                        rss_articles = future.result(timeout=10)  # Reduced timeout for faster response
+                        rss_articles = future.result(timeout=10)
                         if rss_articles:
                             articles.extend(rss_articles)
                             logger.info("Retrieved articles from RSS feeds", count=len(rss_articles))
@@ -1278,7 +1115,7 @@ Your response must be valid JSON that can be parsed programmatically.
             processed_articles = []
             seen_titles = set()
             
-            for article in articles[:limit * 2]:  # Process more than needed to allow for deduplication
+            for article in articles[:limit * 2]:
                 try:
                     if not isinstance(article, dict):
                         continue
@@ -1335,24 +1172,10 @@ Your response must be valid JSON that can be parsed programmatically.
             return self._get_enhanced_fallback_health_news(source, limit)
 
     def _get_health_news_from_rss_direct(self, source='all', limit=3):
-        """
-        Direct RSS feed retrieval from WHO and CDC sources.
-        
-        Optimized for speed and reliability:
-        - Reduced timeouts
-        - Better error handling
-        - Header rotation to avoid blocking
-        
-        Args:
-            source (str): News source ('who', 'cdc', 'all')
-            limit (int): Maximum articles per source
-            
-        Returns:
-            list: List of news articles from RSS feeds
-        """
+        """Direct RSS feed retrieval from WHO and CDC sources."""
         articles = []
     
-        # Reliable RSS sources (Mayo Clinic removed for performance)
+        # Reliable RSS sources
         rss_sources = {
             'who': [
                 'https://www.who.int/rss-feeds/news-english.xml',
@@ -1393,12 +1216,12 @@ Your response must be valid JSON that can be parsed programmatically.
                     try:
                         import time
                         import random
-                        time.sleep(random.uniform(0.2, 0.5))  # Reduced delay for speed
+                        time.sleep(random.uniform(0.2, 0.5))
                         
                         # Rotate headers to avoid blocking
                         headers = header_options[i % len(header_options)]
                         
-                        response = requests.get(url, timeout=8, headers=headers)  # Reduced timeout
+                        response = requests.get(url, timeout=8, headers=headers)
                         response.raise_for_status()
                         
                         feed = feedparser.parse(response.content)
@@ -1430,7 +1253,7 @@ Your response must be valid JSON that can be parsed programmatically.
                         if source_articles:
                             articles.extend(source_articles)
                             logger.info(f"Retrieved {len(source_articles)} articles from {src} RSS")
-                            break  # Success, no need to try other URLs for this source
+                            break
                             
                     except requests.exceptions.RequestException as e:
                         logger.warning(f"RSS request failed for {src} at {url}: {str(e)}")
@@ -1442,17 +1265,7 @@ Your response must be valid JSON that can be parsed programmatically.
         return articles
 
     def _parse_rss_date(self, date_string):
-        """
-        Parse RSS date string and convert to YYYY-MM-DD format.
-        
-        Handles various RSS date formats efficiently.
-        
-        Args:
-            date_string (str): Raw date string from RSS feed
-            
-        Returns:
-            str: Formatted date string (YYYY-MM-DD)
-        """
+        """Parse RSS date string and convert to YYYY-MM-DD format."""
         if not date_string:
             return datetime.now().strftime("%Y-%m-%d")
         
@@ -1510,19 +1323,7 @@ Your response must be valid JSON that can be parsed programmatically.
             return datetime.now().strftime("%Y-%m-%d")
 
     def _scrape_health_news_direct(self, source='all', limit=3):
-        """
-        Direct web scraping from WHO and CDC websites.
-        
-        Fallback method when RSS feeds are unavailable.
-        Optimized for speed and reliability.
-        
-        Args:
-            source (str): News source ('who', 'cdc', 'all')
-            limit (int): Maximum articles to scrape
-            
-        Returns:
-            list: List of scraped news articles
-        """
+        """Direct web scraping from WHO and CDC websites."""
         articles = []
         
         headers = {
@@ -1554,19 +1355,7 @@ Your response must be valid JSON that can be parsed programmatically.
         return articles
 
     def _get_enhanced_fallback_health_news(self, source='all', limit=3):
-        """
-        Enhanced fallback health news when all other methods fail.
-        
-        Provides reliable, up-to-date health information from WHO and CDC.
-        Content is curated to be relevant and informative.
-        
-        Args:
-            source (str): News source preference
-            limit (int): Number of articles needed
-            
-        Returns:
-            list: List of fallback health news articles
-        """
+        """Enhanced fallback health news when all other methods fail."""
         current_date = datetime.now().strftime("%Y-%m-%d")
         
         # WHO health news content
@@ -1625,16 +1414,7 @@ Your response must be valid JSON that can be parsed programmatically.
         return selected_articles
 
     def _scrape_who_news_improved(self, limit=3, headers=None):
-        """
-        Improved WHO news scraping with multiple URL attempts.
-        
-        Args:
-            limit (int): Maximum articles to retrieve
-            headers (dict): HTTP headers for requests
-            
-        Returns:
-            list: List of WHO news articles
-        """
+        """Improved WHO news scraping with multiple URL attempts."""
         try:
             # Multiple WHO news URLs for better success rate
             who_urls = [
@@ -1701,16 +1481,7 @@ Your response must be valid JSON that can be parsed programmatically.
             return []
                                 
     def _scrape_cdc_news_improved(self, limit=3, headers=None):
-        """
-        Improved CDC news scraping with multiple URL attempts.
-        
-        Args:
-            limit (int): Maximum articles to retrieve
-            headers (dict): HTTP headers for requests
-            
-        Returns:
-            list: List of CDC news articles
-        """
+        """Improved CDC news scraping with multiple URL attempts."""
         try:
             cdc_urls = [
                 "https://www.cdc.gov/media/index.html",
@@ -1775,16 +1546,7 @@ Your response must be valid JSON that can be parsed programmatically.
             return []
 
     def _get_article_content_safe(self, url, headers=None):
-        """
-        Safely get article content with timeout and error handling.
-        
-        Args:
-            url (str): Article URL to scrape
-            headers (dict): HTTP headers for request
-            
-        Returns:
-            str: Article content or fallback message
-        """
+        """Safely get article content with timeout and error handling."""
         try:
             if not url or url == '#':
                 return "Content not available"
@@ -1826,42 +1588,16 @@ Your response must be valid JSON that can be parsed programmatically.
 
 
 # Celery Tasks for Asynchronous Processing
-# ========================================
-# These tasks handle time-consuming operations in the background
-# to improve user experience and system performance
-
 @shared_task
 def analyze_xray_task(xray_id, image_path):
-    """
-    Celery task to analyze X-ray images asynchronously.
-    
-    This task runs in the background to avoid blocking the main application
-    while performing computationally intensive X-ray analysis.
-    
-    Args:
-        xray_id (int): Database ID of the XRayAnalysis object
-        image_path (str): Path to the X-ray image file
-        
-    Returns:
-        dict: Analysis results or error information
-        
-    Usage:
-        # Queue the task
-        analyze_xray_task.delay(xray.id, xray.image.path)
-        
-        # Or with custom options
-        analyze_xray_task.apply_async(
-            args=[xray.id, xray.image.path],
-            countdown=2,  # Start after 2 seconds
-            expires=300   # Expire after 5 minutes
-        )
-    """
+    """Celery task to analyze X-ray images asynchronously."""
     try:
         from ..models import XRayAnalysis
         
         # Get the XRayAnalysis object
         xray = XRayAnalysis.objects.get(id=xray_id)
         
+                
         # Initialize PraxiaAI
         praxia = PraxiaAI()
         
@@ -1900,26 +1636,7 @@ def analyze_xray_task(xray_id, image_path):
 
 @shared_task
 def scrape_health_news(source='all', limit=3):
-    """
-    Celery task to scrape health news asynchronously.
-    
-    This task runs periodically to keep health news data fresh
-    without blocking user interactions.
-    
-    Args:
-        source (str): News source ('who', 'cdc', 'all')
-        limit (int): Maximum number of articles to retrieve
-        
-    Returns:
-        list: List of saved articles with metadata
-        
-    Usage:
-        # Manual execution
-        scrape_health_news.delay('all', 5)
-        
-        # Scheduled execution (configured in celery.py)
-        # Runs daily at 6 AM UTC
-    """
+    """Celery task to scrape health news asynchronously."""
     try:
         praxia = PraxiaAI()
         news_articles = praxia._get_health_news_comprehensive(source, limit)
@@ -1964,24 +1681,7 @@ def scrape_health_news(source='all', limit=3):
 
 @shared_task
 def diagnose_symptoms_task(symptoms, user_profile=None, chat_topic=None):
-    """
-    Celery task for symptom diagnosis (for async diagnosis if needed).
-    
-    This task can be used when you need to perform diagnosis asynchronously,
-    though most diagnosis requests are handled synchronously for better UX.
-    
-    Args:
-        symptoms (str): User's symptom description
-        user_profile (dict): User's medical profile
-        chat_topic (str): Chat context
-        
-    Returns:
-        dict: Diagnosis results
-        
-    Usage:
-        # For heavy diagnosis workloads
-        diagnose_symptoms_task.delay(symptoms, user_profile, chat_topic)
-    """
+    """Celery task for symptom diagnosis (for async diagnosis if needed)."""
     try:
         praxia = PraxiaAI()
         diagnosis_result = praxia.diagnose_symptoms(symptoms, user_profile, chat_topic)
@@ -1995,21 +1695,7 @@ def diagnose_symptoms_task(symptoms, user_profile=None, chat_topic=None):
 
 @shared_task
 def periodic_model_cleanup():
-    """
-    Periodic task to clean up model memory and optimize performance.
-    
-    This task runs every 12 hours to:
-    - Clear CUDA cache if available
-    - Force garbage collection
-    - Optimize memory usage
-    
-    Returns:
-        dict: Cleanup status and message
-        
-    Usage:
-        # Scheduled execution (configured in celery.py)
-        # Runs every 12 hours
-    """
+    """Periodic task to clean up model memory and optimize performance."""
     try:
         import gc
         import torch
@@ -2031,21 +1717,7 @@ def periodic_model_cleanup():
 
 @shared_task
 def health_data_refresh():
-    """
-    Periodic task to refresh health data cache.
-    
-    This task runs every 4 hours to:
-    - Clear existing health data cache
-    - Fetch fresh health news and research trends
-    - Update cache with new data
-    
-    Returns:
-        dict: Refresh status and statistics
-        
-    Usage:
-        # Scheduled execution (configured in celery.py)
-        # Runs every 4 hours at 30 minutes past the hour
-    """
+    """Periodic task to refresh health data cache."""
     try:
         praxia = PraxiaAI()
         
@@ -2074,22 +1746,7 @@ def health_data_refresh():
 
 @shared_task
 def validate_model_integrity():
-    """
-    Task to validate AI model integrity and performance.
-    
-    This task runs daily to:
-    - Test basic AI functionality
-    - Validate model responses
-    - Check component availability
-    - Report system health
-    
-    Returns:
-        dict: Validation results and component status
-        
-    Usage:
-        # Scheduled execution (configured in celery.py)
-        # Runs daily at midnight UTC
-    """
+    """Task to validate AI model integrity and performance."""
     try:
         praxia = PraxiaAI()
         
@@ -2133,22 +1790,7 @@ def validate_model_integrity():
 
 @shared_task
 def monitor_rss_feeds():
-    """
-    Monitor RSS feed health and update circuit breaker status.
-    
-    This task runs every 6 hours to:
-    - Test RSS feed availability
-    - Update circuit breaker states
-    - Cache feed status for health checks
-    - Log feed health metrics
-    
-    Returns:
-        dict: RSS feed monitoring results
-        
-    Usage:
-        # Scheduled execution (configured in celery.py)
-        # Runs every 6 hours
-    """
+    """Monitor RSS feed health and update circuit breaker status."""
     try:
         from ..circuit_breaker import rss_breaker
         
@@ -2225,3 +1867,4 @@ def monitor_rss_feeds():
             "error": str(e),
             "status": "error"
         }
+
