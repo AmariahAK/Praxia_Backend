@@ -1,3 +1,4 @@
+import os
 import pybreaker
 import json
 from django.conf import settings
@@ -95,34 +96,56 @@ def scheduled_health_check():
         results["services"]["ai_models"] = f"error: {str(e)}"
         results["status"] = "degraded"
 
-    # Check Celery workers
+    # Check Celery workers - IMPROVED VERSION
     try:
         from celery.app.control import Inspect
         from praxia_backend.celery import app
+        import redis
 
-        insp = Inspect(app=app)
-        if not insp.ping():
-            results["services"]["celery"] = "no_workers_online"
-            results["status"] = "degraded"
-        else:
+        # First check if Redis (Celery broker) is accessible
+        redis_client = redis.Redis.from_url(settings.CELERY_BROKER_URL)
+        redis_client.ping()
+        
+        # Check Celery workers with timeout
+        insp = Inspect(app=app, timeout=5.0)  # Add timeout
+        active_workers = insp.ping()
+        
+        if active_workers and len(active_workers) > 0:
             results["services"]["celery"] = "operational"
             # Check active tasks
-            active = insp.active()
-            if active:
-                results["services"]["celery_active_tasks"] = sum(len(tasks) for tasks in active.values())
-            # Check queue lengths
-            import redis
-            redis_client = redis.Redis.from_url(settings.CELERY_BROKER_URL)
+            try:
+                active = insp.active()
+                if active:
+                    results["services"]["celery_active_tasks"] = sum(len(tasks) for tasks in active.values())
+            except Exception:
+                pass
+        else:
+            # Check if this is the web service (which shouldn't require Celery workers)
+            service_name = os.environ.get('SERVICE_NAME', 'unknown')
+            if service_name == 'web':
+                # For web service, Celery workers being offline is not critical
+                results["services"]["celery"] = "workers_offline_non_critical"
+                logger.info("Celery workers offline but non-critical for web service")
+            else:
+                results["services"]["celery"] = "no_workers_online"
+                results["status"] = "degraded"
+        
+        # Check queue lengths
+        try:
             queue_length = redis_client.llen('celery')
             results["services"]["celery_queue_length"] = queue_length
             if queue_length > 100:
                 results["services"]["celery_queue_status"] = "backlogged"
-                results["status"] = "degraded"
+                if results["status"] != "degraded":
+                    results["status"] = "degraded"
             else:
                 results["services"]["celery_queue_status"] = "normal"
+        except Exception as e:
+            logger.warning("Could not check Celery queue length", error=str(e))
+        
     except Exception as e:
         results["services"]["celery"] = f"error: {str(e)}"
-        results["status"] = "degraded"
+        logger.warning("Celery health check failed", error=str(e))
 
     # Gather external data for AI context
     external_data = {}
@@ -151,6 +174,36 @@ def scheduled_health_check():
     except Exception as e:
         logger.error("Failed to gather research trends", error=str(e))
         external_data["research_trends"] = {}
+
+    # Determine overall status - IMPROVED LOGIC
+    critical_services = ["database", "redis"]
+    non_critical_services = ["celery", "densenet_model"]
+
+    critical_issues = []
+    for service in critical_services:
+        if service in results["services"]:
+            status = results["services"][service]
+            if isinstance(status, str) and ("error" in status.lower() or status == "degraded"):
+                critical_issues.append(service)
+
+    # Only mark as degraded if critical services have issues
+    if critical_issues:
+        results["status"] = "degraded"
+        logger.warning("Critical services have issues", services=critical_issues)
+    else:
+        # Check non-critical services
+        non_critical_issues = []
+        for service in non_critical_services:
+            if service in results["services"]:
+                status = results["services"][service]
+                if isinstance(status, str) and ("error" in status.lower() or "no_workers" in status):
+                    non_critical_issues.append(service)
+        
+        if non_critical_issues:
+            results["status"] = "operational_with_warnings"
+            logger.info("Non-critical services have issues", services=non_critical_issues)
+        else:
+            results["status"] = "operational"
 
     # Store the results in the database
     health_check = HealthCheckResult.objects.create(

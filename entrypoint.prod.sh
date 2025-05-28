@@ -165,6 +165,33 @@ if [ "$SERVICE_NAME" != "web" ]; then
     echo "Web service is ready (or timeout reached)!"
 fi
 
+# For Celery services, ensure they can connect to the broker
+if [[ "$SERVICE_NAME" == celery* ]]; then
+    echo "Testing Celery broker connection..."
+    timeout 30 python -c "
+import redis
+import sys
+try:
+    r = redis.Redis(host='${REDIS_HOST:-redis}', port=${REDIS_PORT:-6379}, db=1)
+    r.ping()
+    print('Celery broker connection successful')
+except Exception as e:
+    print(f'Celery broker connection failed: {e}')
+    sys.exit(1)
+" || exit 1
+
+    echo "Clearing Celery broker database..."
+    timeout 30 python -c "
+import redis
+try:
+    r = redis.Redis(host='${REDIS_HOST:-redis}', port=${REDIS_PORT:-6379}, db=1)
+    r.flushdb()
+    print('Cleared Celery broker database')
+except Exception as e:
+    print(f'Could not clear Celery database: {e}')
+" || echo "Failed to clear Celery database, continuing..."
+fi
+
 # Create necessary directories
 mkdir -p /app/media/profile_pics /app/media/xrays /app/data/models /app/prometheus
 
@@ -214,20 +241,6 @@ scrape_configs:
 EOC
 fi
 
-# Clear Celery queues for celery services
-if [[ "$SERVICE_NAME" == celery* ]]; then
-    echo "Clearing Celery broker database..."
-    timeout 30 python -c "
-import redis
-try:
-    r = redis.Redis(host='${REDIS_HOST:-redis}', port=${REDIS_PORT:-6379}, db=1)
-    r.flushdb()
-    print('Cleared Celery broker database')
-except Exception as e:
-    print(f'Could not clear Celery database: {e}')
-" || echo "Failed to clear Celery database, continuing..."
-fi
-
 # Production-specific optimizations
 echo "Applying production optimizations..."
 
@@ -269,4 +282,3 @@ else
     # For other services, use standard Daphne
     exec daphne -b 0.0.0.0 -p 8000 praxia_backend.asgi:application
 fi
-ki

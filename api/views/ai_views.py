@@ -537,5 +537,17 @@ class AuthenticatedHealthCheckView(APIView):
                 "message": "Health check performed on demand"
             })
         
+        # Determine user-friendly status
+        status = latest_check.status
+        if status == "operational_with_warnings":
+            user_message = "System is operational with minor issues"
+        elif status == "degraded":
+            user_message = "System has some issues but core functionality is available"
+        else:
+            user_message = "System is fully operational"
+        
         serializer = HealthCheckResultSerializer(latest_check)
-        return Response(serializer.data)
+        response_data = serializer.data
+        response_data["user_message"] = user_message
+        
+        return Response(response_data)
