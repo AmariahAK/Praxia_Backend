@@ -291,83 +291,211 @@ FRONTEND_URL=https://yourdomain.com
 ### Initial Setup
 
 1. Clone the repository:
-   ```bash
-   git clone https://github.com/AmariahAK/Praxia_Backend.git
-   cd Praxia_Backend
-   ```
+
+```bash
+git clone https://github.com/AmariahAK/Praxia_Backend.git
+```
+
+```bash
+cd Praxia_Backend
+```
 
 2. Create a `.env` file in the project root using the example above.
 
 3. Make sure all script files are executable:
-   ```bash
-   chmod +x docker-entrypoint-wrapper.sh
-   chmod +x entrypoint.sh
-   chmod +x entrypoint.prod.sh
-   ```
 
-4. Build and start the containers:
-   ```bash
-   docker-compose up -d
-   ```
+```bash
+chmod +x docker-entrypoint-wrapper.sh
+```
 
-5. The API will be available at `http://localhost:8000/api/`
+```bash
+chmod +x entrypoint.sh
+```
 
-6. Access the admin interface at `http://localhost:8000/admin/` using the superuser credentials defined in your `.env` file.
+```bash
+chmod +x entrypoint.prod.sh
+```
 
-7. Monitoring dashboards:
+```bash
+chmod +x init-db.sh
+```
+
+4. Create necessary directories:
+
+```bash
+mkdir -p media/profile_pics
+```
+
+```bash
+mkdir -p media/xrays
+```
+
+```bash
+mkdir -p data/models
+```
+
+```bash
+mkdir -p staticfiles
+```
+
+```bash
+mkdir -p prometheus
+```
+
+5. For slower internet connections, pre-pull large Docker images:
+
+```bash
+docker pull projectmonai/monai:latest
+```
+
+```bash
+docker pull libretranslate/libretranslate
+```
+
+```bash
+docker pull grafana/grafana
+```
+
+```bash
+docker pull prom/prometheus
+```
+
+6. Build and start the containers:
+
+```bash
+docker-compose up -d
+```
+
+7. The API will be available at `http://localhost:8000/api/`
+
+8. Access the admin interface at `http://localhost:8000/admin/` using the superuser credentials defined in your `.env` file.
+
+9. Monitoring dashboards:
    - Prometheus: `http://localhost:9090/`
    - Grafana: `http://localhost:3000/` (default login: admin / admin_password)
+
+### Automated Setup Script
+
+For convenience, you can create a setup script to automate the initial configuration:
+
+```bash:setup-env.sh
+#!/bin/bash
+
+MODE=$1
+
+if [ "$MODE" = "dev" ]; then
+    echo "Setting up development environment..."
+    
+    # Make sure all scripts are executable
+    chmod +x docker-entrypoint-wrapper.sh
+    chmod +x entrypoint.sh
+    chmod +x entrypoint.prod.sh
+    chmod +x init-db.sh
+    
+    # Create necessary directories
+    mkdir -p media/profile_pics
+    mkdir -p media/xrays
+    mkdir -p data/models
+    mkdir -p staticfiles
+    mkdir -p prometheus
+    
+    # Create prometheus config if it doesn't exist
+    if [ ! -f prometheus/prometheus.yml ]; then
+        cp prometheus/prometheus.yml.example prometheus/prometheus.yml || echo "prometheus.yml.example not found"
+    fi
+    
+    echo "Development environment setup complete!"
+    echo "Run 'docker-compose up' to start the development environment."
+    
+elif [ "$MODE" = "prod" ]; then
+    echo "Setting up production environment..."
+    
+    # Make sure all scripts are executable
+    chmod +x docker-entrypoint-wrapper.sh
+    chmod +x entrypoint.sh
+    chmod +x entrypoint.prod.sh
+    chmod +x init-db.sh
+    
+    echo "Production environment setup complete!"
+    echo "Run 'docker-compose -f docker-compose.prod.yml up -d' to start the production environment."
+    
+else
+    echo "Usage: ./setup-env.sh [dev|prod]"
+    exit 1
+fi
+```
+
+Make the setup script executable and run it:
+
+```bash
+chmod +x setup-env.sh
+```
+
+```bash
+./setup-env.sh dev
+```
 
 ### Local Development Without Docker
 
 For local development without Docker:
 
 1. Create a virtual environment:
-   ```bash
-   python -m venv venv
-   source venv/bin/activate  # On Windows: venv\Scripts\activate
-   ```
+
+```bash
+python -m venv venv
+```
+
+```bash
+source venv/bin/activate
+```
 
 2. Install dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
+
+```bash
+pip install -r requirements.txt
+```
 
 3. Set up a local PostgreSQL database and update your `.env` file accordingly.
 
 4. Apply migrations:
-   ```bash
-   python manage.py migrate
-   ```
+
+```bash
+python manage.py migrate
+```
 
 5. Create a superuser:
-   ```bash
-   python manage.py createsuperuser
-   ```
+
+```bash
+python manage.py createsuperuser
+```
 
 6. Run the development server:
-   ```bash
-   python manage.py runserver
-   ```
+
+```bash
+python manage.py runserver
+```
 
 ## Production Setup
 
 Production setup requires pre-configured external PostgreSQL databases.
 
 1. Clone the repository:
-   ```bash
-   git clone https://github.com/AmariahAK/Praxia_Backend.git
-   cd Praxia_Backend
-   ```
+
+```bash
+git clone https://github.com/AmariahAK/Praxia_Backend.git
+```
+
+```bash
+cd Praxia_Backend
+```
 
 2. Create a `.env.prod` file in the project root using the production example above.
 
-3. Make sure all script files are executable:
-   ```bash
-   chmod +x docker-entrypoint-wrapper.sh
-   chmod +x entrypoint.sh
-   chmod +x entrypoint.prod.sh
-   ```
+3. Run the automated setup script:
+
+```bash
+./setup-env.sh prod
+```
 
 4. Configure your external PostgreSQL databases:
    - Create the main database (praxia_backend by default)
@@ -375,9 +503,10 @@ Production setup requires pre-configured external PostgreSQL databases.
    - Ensure the database user has appropriate permissions
 
 5. Build and start the production containers:
-   ```bash
-   docker-compose -f docker-compose.prod.yml up -d
-   ```
+
+```bash
+docker-compose -f docker-compose.prod.yml up -d
+```
 
 6. Set up SSL certificates:
    - The production setup includes Nginx for SSL termination
@@ -456,26 +585,86 @@ Praxia includes comprehensive monitoring with Prometheus and Grafana:
 ### Common Issues
 
 #### Permission Denied for Entrypoint Scripts
-If you encounter permission denied errors:
+If you encounter `exec /app/docker-entrypoint-wrapper.sh: permission denied` errors:
 
 ```bash
 chmod +x docker-entrypoint-wrapper.sh
+```
+
+```bash
 chmod +x entrypoint.sh
+```
+
+```bash
 chmod +x entrypoint.prod.sh
+```
+
+```bash
+chmod +x init-db.sh
+```
+
+#### Database Does Not Exist
+If you see errors like `database "praxia_db" does not exist`:
+
+1. Make sure your `init-db.sh` script is executable:
+
+```bash
+chmod +x init-db.sh
+```
+
+2. Verify the database settings in your `.env` file match what's in `init-db.sh`
+
+3. You can manually create the database:
+
+```bash
+docker-compose exec db psql -U your_db_user -c "CREATE DATABASE praxia_db;"
+```
+
+#### MONAI Container Syntax Error
+If you see a syntax error in the MONAI container, update the command in `docker-compose.yml` to use proper syntax:
+
+```yaml
+command: >
+  python -c "import monai; print('MONAI initialized successfully'); import time; while True: time.sleep(3600)"
+```
+
+#### Missing Directories
+If containers fail because of missing directories:
+
+```bash
+mkdir -p media/profile_pics
+```
+
+```bash
+mkdir -p media/xrays
+```
+
+```bash
+mkdir -p data/models
+```
+
+```bash
+mkdir -p staticfiles
+```
+
+```bash
+mkdir -p prometheus
 ```
 
 #### DenseNet Model Issues
 If you encounter issues with the X-ray analysis model:
 
 1. Manually run the model download script:
-   ```bash
-   python api/utils/download_model.py
-   ```
+
+```bash
+python api/utils/download_model.py
+```
 
 2. Restart the Docker containers:
-   ```bash
-   docker-compose restart
-   ```
+
+```bash
+docker-compose restart
+```
 
 #### Database Connection Errors
 If you encounter database connection errors:
@@ -498,22 +687,85 @@ If containers fail to start:
 - Ensure ports are not already in use by other services
 - Check disk space and system resources
 
-### Logs
-Access logs for troubleshooting:
+#### Volume Mount Issues
+If you're experiencing issues with volume mounts:
+
+1. Use the `:delegated` option for better performance:
+```yaml
+volumes:
+  - ./:/app:delegated
+```
+
+2. Ensure the host directories exist before mounting:
 
 ```bash
-# View logs for all containers
-docker-compose logs
+mkdir -p media staticfiles data/models prometheus
+```
 
-# View logs for a specific container
-docker-compose logs web
+3. Check for permission issues on the host directories:
 
-# Follow logs in real-time
-docker-compose logs -f web
+```bash
+chmod -R 755 media staticfiles data prometheus
+```
+
+#### Docker Image Download Timeouts
+If you experience timeouts when downloading Docker images (especially with slower internet connections):
+
+**Recommended approach:** Pull large images separately before starting the full stack:
+
+```bash
+docker pull projectmonai/monai:latest
+```
+
+```bash
+docker pull libretranslate/libretranslate
+```
+
+```bash
+docker pull grafana/grafana
+```
+
+```bash
+docker pull prom/prometheus
+```
+
+Then start the full stack:
+
+```bash
+docker compose up --build
+```
+
+**Alternatively,** you can start services incrementally:
+
+```bash
+docker compose up -d db redis
+```
+
+```bash
+docker compose up -d web celery celery-beat
+```
+
+```bash
+docker compose up -d monai prometheus grafana libretranslate
 ```
 
 ### Health Check
 The system includes a health check endpoint at `/api/health/` that provides status information for all components.
+
+### Logs
+Access logs for troubleshooting:
+
+```bash
+docker-compose logs
+```
+
+```bash
+docker-compose logs web
+```
+
+```bash
+docker-compose logs -f web
+```
 
 ## Development vs Production Differences
 
