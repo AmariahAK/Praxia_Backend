@@ -19,7 +19,7 @@ Before setting up Praxia Backend, ensure you have the following installed:
 - Docker and Docker Compose
 - Git
 - Python 3.9+ (for local development without Docker)
-- PostgreSQL (for production setup)
+- PostgreSQL (external database required for both development and production)
 - Together AI API key (for AI functionality)
 
 ## Environment Variables
@@ -302,7 +302,9 @@ cd Praxia_Backend
 
 2. Create a `.env` file in the project root using the example above.
 
-3. Make sure all script files are executable:
+3. Set up your external PostgreSQL database and ensure it's accessible from your development environment.
+
+4. Make sure all script files are executable:
 
 ```bash
 chmod +x docker-entrypoint-wrapper.sh
@@ -316,11 +318,7 @@ chmod +x entrypoint.sh
 chmod +x entrypoint.prod.sh
 ```
 
-```bash
-chmod +x init-db.sh
-```
-
-4. Create necessary directories:
+5. Create necessary directories:
 
 ```bash
 mkdir -p media/profile_pics
@@ -342,7 +340,7 @@ mkdir -p staticfiles
 mkdir -p prometheus
 ```
 
-5. For slower internet connections, pre-pull large Docker images:
+6. For slower internet connections, pre-pull large Docker images:
 
 ```bash
 docker pull projectmonai/monai:latest
@@ -360,80 +358,19 @@ docker pull grafana/grafana
 docker pull prom/prometheus
 ```
 
-6. Build and start the containers:
+7. Build and start the containers:
 
 ```bash
 docker-compose up -d
 ```
 
-7. The API will be available at `http://localhost:8000/api/`
+8. The API will be available at `http://localhost:8000/api/`
 
-8. Access the admin interface at `http://localhost:8000/admin/` using the superuser credentials defined in your `.env` file.
+9. Access the admin interface at `http://localhost:8000/admin/` using the superuser credentials defined in your `.env` file.
 
-9. Monitoring dashboards:
-   - Prometheus: `http://localhost:9090/`
-   - Grafana: `http://localhost:3000/` (default login: admin / admin_password)
-
-### Automated Setup Script
-
-For convenience, you can create a setup script to automate the initial configuration:
-
-```bash:setup-env.sh
-#!/bin/bash
-
-MODE=$1
-
-if [ "$MODE" = "dev" ]; then
-    echo "Setting up development environment..."
-    
-    # Make sure all scripts are executable
-    chmod +x docker-entrypoint-wrapper.sh
-    chmod +x entrypoint.sh
-    chmod +x entrypoint.prod.sh
-    chmod +x init-db.sh
-    
-    # Create necessary directories
-    mkdir -p media/profile_pics
-    mkdir -p media/xrays
-    mkdir -p data/models
-    mkdir -p staticfiles
-    mkdir -p prometheus
-    
-    # Create prometheus config if it doesn't exist
-    if [ ! -f prometheus/prometheus.yml ]; then
-        cp prometheus/prometheus.yml.example prometheus/prometheus.yml || echo "prometheus.yml.example not found"
-    fi
-    
-    echo "Development environment setup complete!"
-    echo "Run 'docker-compose up' to start the development environment."
-    
-elif [ "$MODE" = "prod" ]; then
-    echo "Setting up production environment..."
-    
-    # Make sure all scripts are executable
-    chmod +x docker-entrypoint-wrapper.sh
-    chmod +x entrypoint.sh
-    chmod +x entrypoint.prod.sh
-    chmod +x init-db.sh
-    
-    echo "Production environment setup complete!"
-    echo "Run 'docker-compose -f docker-compose.prod.yml up -d' to start the production environment."
-    
-else
-    echo "Usage: ./setup-env.sh [dev|prod]"
-    exit 1
-fi
-```
-
-Make the setup script executable and run it:
-
-```bash
-chmod +x setup-env.sh
-```
-
-```bash
-./setup-env.sh dev
-```
+10. Monitoring dashboards:
+    - Prometheus: `http://localhost:9090/`
+    - Grafana: `http://localhost:3000/` (default login: admin / admin_password)
 
 ### Local Development Without Docker
 
@@ -455,7 +392,7 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-3. Set up a local PostgreSQL database and update your `.env` file accordingly.
+3. Set up your external PostgreSQL database and update your `.env` file accordingly.
 
 4. Apply migrations:
 
@@ -491,10 +428,18 @@ cd Praxia_Backend
 
 2. Create a `.env.prod` file in the project root using the production example above.
 
-3. Run the automated setup script:
+3. Make sure all script files are executable:
 
 ```bash
-./setup-env.sh prod
+chmod +x docker-entrypoint-wrapper.sh
+```
+
+```bash
+chmod +x entrypoint.sh
+```
+
+```bash
+chmod +x entrypoint.prod.sh
 ```
 
 4. Configure your external PostgreSQL databases:
@@ -519,20 +464,13 @@ docker-compose -f docker-compose.prod.yml up -d
 
 ## Database Configuration
 
-### Development Database
+### External Database Requirement
 
-In development mode:
-- PostgreSQL can run in a Docker container or be external
-- Database connection details are specified in your `.env` file
-- Migrations are applied automatically during container startup
-
-### Production Database
-
-For production:
-- You must set up external PostgreSQL databases before deployment
+Both development and production environments require external PostgreSQL databases:
+- Database connection details are specified in your `.env` or `.env.prod` file
 - The system expects the databases to already exist
-- Connection details are specified in your `.env.prod` file
-- Consider implementing database backups and replication
+- Migrations are applied automatically during container startup
+- Consider implementing database backups and replication for production
 
 ### Database Sharding
 
@@ -599,27 +537,6 @@ chmod +x entrypoint.sh
 chmod +x entrypoint.prod.sh
 ```
 
-```bash
-chmod +x init-db.sh
-```
-
-#### Database Does Not Exist
-If you see errors like `database "praxia_db" does not exist`:
-
-1. Make sure your `init-db.sh` script is executable:
-
-```bash
-chmod +x init-db.sh
-```
-
-2. Verify the database settings in your `.env` file match what's in `init-db.sh`
-
-3. You can manually create the database:
-
-```bash
-docker-compose exec db psql -U your_db_user -c "CREATE DATABASE praxia_db;"
-```
-
 #### MONAI Container Syntax Error
 If you see a syntax error in the MONAI container, update the command in `docker-compose.yml` to use proper syntax:
 
@@ -669,9 +586,10 @@ docker-compose restart
 #### Database Connection Errors
 If you encounter database connection errors:
 - Verify database credentials in your `.env` or `.env.prod` file
-- Check that the database server is running and accessible
-- For production, ensure the database user has appropriate permissions
-- Check network connectivity between containers or to external database
+- Check that the external database server is running and accessible
+- Ensure the database user has appropriate permissions
+- Check network connectivity between containers and external database
+- Verify that the specified databases exist on your external PostgreSQL server
 
 #### AI Model Errors
 If AI functionality is not working:
@@ -738,7 +656,7 @@ docker compose up --build
 **Alternatively,** you can start services incrementally:
 
 ```bash
-docker compose up -d db redis
+docker compose up -d redis
 ```
 
 ```bash
@@ -770,14 +688,14 @@ docker-compose logs -f web
 ## Development vs Production Differences
 
 ### Development Mode
-- Uses local Docker containers for all services (optional)
+- Uses external PostgreSQL database (required)
 - Uses `.env` for configuration
 - Debug mode enabled
 - CORS allows all origins
 - Simplified SSL setup
 
 ### Production Mode
-- Uses external databases (required)
+- Uses external PostgreSQL databases (required)
 - Uses Nginx for SSL termination and serving static files
 - Uses `.env.prod` for configuration
 - Debug mode disabled
